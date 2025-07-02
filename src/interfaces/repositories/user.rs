@@ -7,6 +7,7 @@ use crate::{entities::user::{User, UserInsert}, errors::AppError, repositories::
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
+    async fn check_connection(&self) -> Result<(), AppError>;
     async fn user_exists(&self, email: &str) -> Result<bool, AppError>;
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AppError>;
     async fn create_user(&self, user: &UserInsert) -> Result<Uuid, AppError>;
@@ -15,6 +16,14 @@ pub trait UserRepository: Send + Sync {
 
 #[async_trait]
 impl UserRepository for SqlxRepo {
+    async fn check_connection(&self) -> Result<(), AppError> {
+        sqlx::query("SELECT 1")
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(AppError::from)
+    }
+
     async fn user_exists(&self, email: &str) -> Result<bool, AppError> {
         let exists: Option<bool> = sqlx::query_scalar!(
             "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)",

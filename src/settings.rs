@@ -47,6 +47,9 @@ pub struct AppConfig {
     #[serde(default)]
     pub database_url: String,
 
+    #[serde(default)]
+    pub redis_url: Option<String>,
+
     #[serde(default = "default_cors_origins")]
     pub cors_allowed_origins: Vec<String>,
 
@@ -109,6 +112,11 @@ impl AppConfig {
         config.database_url = fill_or_env(config.database_url, "APP_DATABASE_URL")?;
         config.jwt_secret = fill_or_env(config.jwt_secret, "APP_JWT_SECRET")?;
         config.refresh_token_secret = fill_or_env(config.refresh_token_secret, "APP_REFRESH_TOKEN_SECRET")?;
+
+         if config.redis_url.is_none() {
+            config.redis_url = env::var("APP_REDIS_URL").ok();
+        }
+        
 
         config.validate()?;
         Ok(config)

@@ -1,3 +1,5 @@
+use redis::Client as RedisClient;
+
 mod domain;
 mod interfaces;
 mod infrastructure;
@@ -16,6 +18,7 @@ use use_cases::auth::AuthHandler;
 
 pub struct AppState {
     pub auth_handler: AppAuthHandler,
+    pub redis_client: Option<RedisClient>,
 }
 
 pub type AppAuthHandler = AuthHandler<SqlxRepo, JwtService>;
@@ -26,6 +29,15 @@ impl AppState {
         let user_repo = SqlxRepo::new(pool);
         let auth_handler = AuthHandler::new(user_repo, jwt_service);
 
-        AppState { auth_handler }
+        let redis_client = config.redis_url.as_ref().and_then(|url| {
+            RedisClient::open(url.as_str())
+                .map_err(|e| tracing::error!("Redis connection error: {}", e))
+                .ok()
+        });
+
+        AppState { 
+            auth_handler,
+            redis_client 
+        }
     }
 }

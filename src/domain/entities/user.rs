@@ -48,7 +48,7 @@ impl From<User> for UserResponse {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct NewUser {
-    #[validate(email(message = "Invalid email format"), length(min = 8, max = 255))]
+    #[validate(email(message = "Invalid email format"), length(max = 255))]
     pub email: String,
 
     #[validate(length(min = 8, max = 72, message = "Password must be between 8 and 72 characters"))]

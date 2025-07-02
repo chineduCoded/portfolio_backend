@@ -9,7 +9,7 @@ pub async fn register(
 ) -> impl Responder {
     match state.auth_handler.register(user.into_inner()).await {
         Ok(user_response) => HttpResponse::Created().json(user_response),
-        Err(e) => HttpResponse::BadRequest().body(e.to_string()),
+        Err(e) => HttpResponse::BadRequest().json(e.to_string()),
     }
 }
 
@@ -20,7 +20,7 @@ pub async fn login(
 ) -> impl Responder {
     match state.auth_handler.login(user.into_inner()).await {
         Ok(auth_response) => HttpResponse::Ok().json(auth_response), 
-        Err(e) => HttpResponse::Unauthorized().body(e.to_string()),
+        Err(e) => HttpResponse::Unauthorized().json(e.to_string()),
     }
 }
 
