@@ -3,6 +3,8 @@ use chrono::{DateTime, Utc};
 use validator::Validate;
 use uuid::Uuid;
 
+use crate::domain::password::validate_password_strength;
+
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct User {
@@ -14,6 +16,8 @@ pub struct User {
     pub is_verified: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub deleted_by: Option<Uuid>
 }
 
 #[derive(Debug)]
@@ -25,6 +29,8 @@ pub struct UserInsert {
     pub is_verified: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub deleted_by: Option<Uuid>
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -48,10 +54,16 @@ impl From<User> for UserResponse {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct NewUser {
-    #[validate(email(message = "Invalid email format"), length(max = 255))]
+    #[validate(email(message = "Invalid email format"))]
     pub email: String,
 
-    #[validate(length(min = 8, max = 72, message = "Password must be between 8 and 72 characters"))]
+    #[validate(
+        length(min = 8, message = "Must be at least 8 characters"),
+        custom(
+            function = "validate_password_strength",
+            message = "Must include uppercase, number, and symbol"
+        )
+    )]
     pub password: String,
 
     #[serde(default = "default_false")]
@@ -76,34 +88,8 @@ impl NewUser {
             is_verified: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
-        }
-    }
-    pub fn validate_password_complexity(&self) -> Result<(), validator::ValidationError> {
-        let mut has_upper = false;
-        let mut has_lower = false;
-        let mut has_digit = false;
-        let mut has_special = false;
-
-        let password = &self.password;
-    
-        for ch in password.chars() {
-            match ch {
-                ch if ch.is_uppercase() => has_upper = true,
-                ch if ch.is_lowercase() => has_lower = true,
-                ch if ch.is_digit(10) => has_digit = true,
-                ch if "!@#$%^&*()-_=+[]{}|;:'\",.<>?/`~".contains(ch) => has_special = true,
-                _ => {},
-            }
-    
-            if has_upper && has_lower && has_digit && has_special {
-                break;
-            }
-        }
-    
-        if has_upper && has_lower && has_digit && has_special {
-            Ok(())
-        } else {
-            Err(validator::ValidationError::new("Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character."))
+            deleted_at: None,
+            deleted_by: None
         }
     }
 }

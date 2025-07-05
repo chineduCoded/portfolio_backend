@@ -109,7 +109,7 @@ impl AppConfig {
         config.env = env_name;
 
         // Inject critical env values if missing
-        config.database_url = fill_or_env(config.database_url, "APP_DATABASE_URL")?;
+        config.database_url = fill_or_env(config.database_url, "DATABASE_URL")?;
         config.jwt_secret = fill_or_env(config.jwt_secret, "APP_JWT_SECRET")?;
         config.refresh_token_secret = fill_or_env(config.refresh_token_secret, "APP_REFRESH_TOKEN_SECRET")?;
 

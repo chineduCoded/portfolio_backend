@@ -1,43 +1,67 @@
+use std::borrow::Cow;
+use std::fmt;
+
 use actix_web::{
     error::ResponseError,
     http::{header::ContentType, StatusCode},
     HttpResponse
 };
 use jsonwebtoken::errors::{ErrorKind, Error as JwtError};
-use derive_more::derive::Display;
+use derive_more::Display;
+use serde::Serialize;
 use validator::ValidationErrors;
 
-#[derive(Debug, Display)]
+#[derive(Debug)]
 pub enum AppError {
-    #[display("Validation error: {message}")]
-    ValidationError { message: String },
-
-    #[display("Resources not found")]
-    NotFound,
-
-    #[display("Conflict: {_0}")]
+    ValidationError(Vec<FieldError>),
+    NotFound(String),
     Conflict(String),
-
-    #[display("Unauthorized access")]
     UnauthorizedAccess,
-
-    #[display("Forbidden access")]
     ForbiddenAccess,
-
-    #[display("Internal server error: {_0}")]
     InternalError(String),
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppError::ValidationError(errors) => {
+                let messages = errors.iter()
+                    .map(|e| format!("{}:{}", e.field, e.message))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "validation error: {}", messages)
+            }
+            AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
+            AppError::Conflict(msg) => write!(f, "Conflict: {}", msg),
+            AppError::UnauthorizedAccess => write!(f, "Unauthorized access"),
+            AppError::ForbiddenAccess => write!(f, "Forbidden access"),
+            AppError::InternalError(msg) => write!(f, "Internal server error: {}", msg)
+        }
+    }
 }
 
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
+        let body = match self {
+            AppError::ValidationError(errors) => {
+                serde_json::json!({
+                    "error": "Validation failed",
+                    "details": errors
+                })
+            }
+            _ => {
+                serde_json::json!({"error": self.to_string()})
+            }
+        };
         HttpResponse::build(self.status_code())
             .insert_header(ContentType::json())
-            .json(serde_json::json!({"error": self.to_string()}))
+            .json(body)
     }
+    
     fn status_code(&self) -> StatusCode {
-        match *self {
-            AppError::ValidationError { .. } => StatusCode::BAD_REQUEST,
-            AppError::NotFound => StatusCode::NOT_FOUND,
+        match self {
+            AppError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::UnauthorizedAccess => StatusCode::UNAUTHORIZED,
             AppError::ForbiddenAccess => StatusCode::FORBIDDEN,
@@ -46,9 +70,44 @@ impl ResponseError for AppError {
     }
 }
 
+impl From<ValidationErrors> for AppError {
+    fn from(errors: ValidationErrors) -> Self {
+        let field_errors = errors
+            .field_errors()
+            .iter()
+            .flat_map(|(field, errors)| {
+                errors.iter().map(|e| FieldError {
+                    field: field.to_string(),
+                    message: e
+                        .message
+                        .as_ref()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "Invalid value".to_string()),      
+                })
+            })
+            .collect();
+
+        AppError::ValidationError(field_errors)
+    }
+}
+
+impl AppError {
+    pub fn to_http_response(&self) -> HttpResponse {
+        self.error_response()
+    }
+}
+
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
-        AppError::InternalError(format!("Database error: {}", err))
+        match err {
+            sqlx::Error::Database(e) if e.code() == Some(Cow::Borrowed("23505")) => {
+                AppError::Conflict("Database conflict occurred".into())
+            }
+            sqlx::Error::Database(e) if e.code() == Some(Cow::Borrowed("23503")) => {
+                AppError::Conflict("Foreign key violation".into())
+            }
+            _ => AppError::InternalError(format!("Database error: {}", err))
+        }
     }
 }
 
@@ -61,19 +120,6 @@ impl From<anyhow::Error> for AppError {
 impl From<PasswordError> for AppError {
     fn from(err: PasswordError) -> Self {
         AppError::InternalError(err.to_string())
-    }
-}
-
-impl From<ValidationErrors> for AppError {
-    fn from(e: ValidationErrors) -> Self {
-        let messages = e.field_errors().iter().flat_map(|(field, errors)| {
-            errors.iter().map(move |error| {
-                format!("{}: {}", field, error.message.as_ref().unwrap_or(&"Invalid value".into()))
-            })
-        }).collect::<Vec<_>>().join("; ");
-        AppError::ValidationError { 
-            message: format!("Validation failed: {}", messages) 
-        }
     }
 }
 
@@ -177,6 +223,31 @@ pub enum PasswordError {
 
     #[display("Password verification failed: {_0}")]
     VerificationError(String),
+
+    #[display("Password must be at least {_0} characters")]
+    TooShort(usize),
+
+    #[display("Password requires uppercase, lowercase, digit, and special character")]
+    InsufficientComplexity,
+
+    #[display("Password is extremely weak: {_0}")]
+    TooWeak(String),
+
+    #[display("Password is weak: {_0}")]
+    Weak(String),
+    
+    #[display("Unknown password strength score")]
+    UnknownStrength,
+
+    #[display("Failed to evaluate password strength")]
+    EvaluationFailed,
+
+    #[display("Password is too weak: {_0}")]
+    WeakWithFeedback(String)
 }
 
-
+#[derive(Debug, Serialize)]
+pub struct FieldError {
+    pub field: String,
+    pub message: String,
+}

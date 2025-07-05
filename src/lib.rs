@@ -7,6 +7,7 @@ pub mod errors;
 pub mod settings;
 pub mod constants;
 pub mod graceful_shutdown;
+pub mod background_task;
 
 pub use domain::{entities, use_cases};
 pub use interfaces::{handlers, repositories, middlewares};

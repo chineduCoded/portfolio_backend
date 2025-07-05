@@ -1,9 +1,14 @@
 use std::env;
 
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, middleware::NormalizePath, web, App, HttpResponse, HttpServer, Responder};
 use portfolio_backend::{
-    db::postgres::create_pool, graceful_shutdown::shutdown_signal, handlers::{auth::{login, register}, 
-    system::health_check}, middlewares::auth::AuthMiddleware, settings::AppConfig, AppState
+    db::postgres::create_pool, 
+    graceful_shutdown::shutdown_signal,
+    background_task::start_purge_task,
+    handlers::{auth::{login, register}, 
+    system::health_check, users::delete_user}, 
+    middlewares::auth::AuthMiddleware, 
+    settings::AppConfig, AppState
 };
 
 #[get("/")]
@@ -49,11 +54,13 @@ async fn main() -> std::io::Result<()> {
         server_addr
     );
     
+    let app_state_clone = app_state.clone();
+
     let server = HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
+            .wrap(NormalizePath::trim())
             .service(home)
-            .service(health_check)
 
             .service(
                 web::scope("/auth")
@@ -64,11 +71,14 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api")
                     .wrap(AuthMiddleware)
-                    // Add other API routes here
+                    .service(delete_user)
+                    .service(health_check)
             )
     })
     .bind(server_addr)?
     .run();
+
+    tokio::spawn(start_purge_task(app_state_clone.auth_handler.user_repo.clone()));
 
     tokio::select! {
         res = server => res,

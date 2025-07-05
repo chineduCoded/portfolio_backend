@@ -99,4 +99,16 @@ where
         
         self.create_auth_response(&user)
     }
+
+    pub async fn delete_user(
+        &self,
+        user_id: Uuid,
+        current_user: &User
+    ) -> Result<(), AppError> {
+        if current_user.id != user_id && !current_user.is_admin {
+            return Err(AppError::ForbiddenAccess);
+        }
+
+        self.user_repo.delete_user(&user_id, &current_user.id).await
+    }
 }

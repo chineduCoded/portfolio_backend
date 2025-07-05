@@ -8,10 +8,12 @@ use crate::{entities::user::{User, UserInsert}, errors::AppError, repositories::
 #[async_trait]
 pub trait UserRepository: Send + Sync {
     async fn check_connection(&self) -> Result<(), AppError>;
-    async fn user_exists(&self, email: &str) -> Result<bool, AppError>;
+    async fn user_exists(&self, id: &Uuid) -> Result<bool, AppError>;
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AppError>;
     async fn create_user(&self, user: &UserInsert) -> Result<Uuid, AppError>;
     async fn get_user_by_id(&self, id: &Uuid) -> Result<Option<User>, AppError>;
+    async fn delete_user(&self, id: &Uuid, deleted_by: &Uuid) -> Result<(), AppError>;
+    async fn purge_soft_deleted_users(&self) -> Result<u64, AppError>;
 }
 
 #[async_trait]
@@ -24,10 +26,10 @@ impl UserRepository for SqlxRepo {
             .map_err(AppError::from)
     }
 
-    async fn user_exists(&self, email: &str) -> Result<bool, AppError> {
+    async fn user_exists(&self, id: &Uuid) -> Result<bool, AppError> {
         let exists: Option<bool> = sqlx::query_scalar!(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)",
-            email
+            "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL)",
+            id
         )
         .fetch_one(&self.pool)
         .await
@@ -41,7 +43,7 @@ impl UserRepository for SqlxRepo {
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AppError> {
         let user = sqlx::query_as!(
             User,
-            "SELECT * FROM users WHERE email = $1",
+            "SELECT * FROM users WHERE email = $1 AND deleted_at IS NULL",
             email
         )
         .fetch_optional(&self.pool)
@@ -60,9 +62,11 @@ impl UserRepository for SqlxRepo {
                 is_admin,
                 is_verified,
                 created_at, 
-                updated_at
+                updated_at,
+                deleted_at,
+                deleted_by
             ) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id
             "#,
             user.email,
             user.username,
@@ -70,7 +74,9 @@ impl UserRepository for SqlxRepo {
             user.is_admin,
             user.is_verified,
             user.created_at,
-            user.updated_at
+            user.updated_at,
+            user.deleted_at,
+            user.deleted_by
         )
         .fetch_one(&self.pool)
         .await
@@ -91,5 +97,49 @@ impl UserRepository for SqlxRepo {
             .fetch_optional(&self.pool)
             .await
             .map_err(AppError::from)
+    }
+
+    async fn delete_user(&self, id: &Uuid, deleted_by: &Uuid) -> Result<(), AppError> {
+        let result = sqlx::query!(
+            r#"
+            UPDATE users
+            SET 
+                deleted_at = NOW(),
+                deleted_by = $2
+            WHERE id = $1 AND deleted_at IS NULL
+            "#,
+            id,
+            deleted_by
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            match e {
+                sqlx::Error::Database(db_err) if db_err.code() == Some(Cow::Borrowed("23503")) => {
+                    AppError::Conflict("User has associated records".to_string())
+                }
+                _ => AppError::from(e)
+            }
+        })?;
+
+        if result.rows_affected() == 0 {
+            return if self.user_exists(id).await? {
+                Err(AppError::Conflict("User is already deleted".to_string()))
+            } else {
+                Err(AppError::NotFound("User not found".to_string()))
+            };
+        }
+
+        Ok(())
+    }
+
+    async fn purge_soft_deleted_users(&self) -> Result<u64, AppError> {
+        let result = sqlx::query!(
+            "DELETE FROM users WHERE deleted_at < NOW() - INTERVAL '7 days'"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
     }
 }
