@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use jsonwebtoken::{encode, Header, decode, Validation, TokenData, Algorithm};
 use chrono::{Utc, Duration};
 use uuid::Uuid;
@@ -6,8 +7,11 @@ use crate::entities::user::User;
 use crate::repositories::token::TokenServiceRepository;
 use crate::settings::{AppConfig, JwtKeys};
 use crate::errors::AuthError;
+use crate::{AppState, RedisService};
 
 const JWT_ALGORITHM: Algorithm = Algorithm::HS512;
+const ACCESS_DENY_PREFIX: &str = "access_deny";
+const REFRESH_DENY_PREFIX: &str = "refresh_deny";
 
 
 #[derive(Clone)]
@@ -16,13 +20,12 @@ pub struct JwtService {
     access_expiration: Duration,
     refresh_expiration: Duration,
 }
-
 impl JwtService {
     pub fn new(config: &AppConfig) -> Self {
         JwtService { 
             keys: JwtKeys::from(config), 
             access_expiration: Duration::minutes(config.jwt_expiration_minutes), 
-            refresh_expiration: Duration::days(config.refresh_token_exp_days) 
+            refresh_expiration: Duration::days(config.refresh_token_exp_days),
         }
     }
 
@@ -80,16 +83,10 @@ impl JwtService {
         )
         .map_err(AuthError::from)
     }
-    
-    pub fn is_revoked(&self, _token: &str) -> Result<bool, AuthError> {
-        // Implement your logic to check if the token is revoked
-        // This could involve checking a database or cache
-        // For now, we will return false indicating the token is not revoked
-        Ok(false)
-    }
-    
 }
 
+
+#[async_trait]
 impl TokenServiceRepository for JwtService {
     fn create_jwt(&self, user: &User) -> Result<String, AuthError> {
         self.create_jwt(user)
@@ -107,7 +104,20 @@ impl TokenServiceRepository for JwtService {
         self.decode_refresh_jwt(token)
     }
 
-    fn is_revoked(&self, token: &str) -> Result<bool, AuthError> {
-        self.is_revoked(token)
+    async fn revoke_refresh_token(&self, token: &str, state: &AppState) -> Result<(), AuthError> {
+        let expiry = self.decode_refresh_jwt(token)?.claims.exp;
+        let ttl_seconds = expiry - Utc::now().timestamp() as usize;
+        state.revoke_token(REFRESH_DENY_PREFIX, token, ttl_seconds).await
+    }
+
+     async fn blacklist_access_token(&self, token: &str, state: &AppState) -> Result<(), AuthError> {
+        let decoded = self.decode_jwt(token)?;
+        let ttl_seconds = decoded.claims.exp - Utc::now().timestamp() as usize;
+        state.revoke_token(ACCESS_DENY_PREFIX, token, ttl_seconds).await
+    }
+
+    async fn is_revoked(&self, token: &str, state: &AppState) -> Result<bool, AuthError> {
+        state.is_token_revoked(ACCESS_DENY_PREFIX, token).await
     }
 }
+

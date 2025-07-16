@@ -1,4 +1,9 @@
-use redis::Client as RedisClient;
+use async_trait::async_trait;
+use deadpool_redis::{
+    Pool as RedisPool, 
+    Runtime,
+};
+use redis::AsyncCommands;
 
 mod domain;
 mod interfaces;
@@ -17,28 +22,101 @@ use auth::jwt::JwtService;
 use repositories::sqlx_repo::SqlxRepo;
 use use_cases::auth::AuthHandler;
 
+use crate::errors::AuthError;
+
+#[async_trait]
+pub trait RedisService {
+    async fn revoke_token(&self, prefix: &str, token: &str, ttl: usize) -> Result<(), AuthError>;
+    async fn is_token_revoked(&self, prefix: &str, token: &str) -> Result<bool, AuthError>;
+}
+
 pub struct AppState {
     pub auth_handler: AppAuthHandler,
-    pub redis_client: Option<RedisClient>,
+    pub redis_pool: Option<RedisPool>,
 }
 
 pub type AppAuthHandler = AuthHandler<SqlxRepo, JwtService>;
 
 impl AppState {
     pub fn new(config: &settings::AppConfig, pool: sqlx::PgPool) -> Self {
-        let jwt_service = JwtService::new(config);
-        let user_repo = SqlxRepo::new(pool);
-        let auth_handler = AuthHandler::new(user_repo, jwt_service);
-
-        let redis_client = config.redis_url.as_ref().and_then(|url| {
-            RedisClient::open(url.as_str())
-                .map_err(|e| tracing::error!("Redis connection error: {}", e))
+        let redis_pool = config.redis_url.as_ref().and_then(|url| {
+            let cfg = deadpool_redis::Config::from_url(url);
+            cfg.create_pool(Some(Runtime::Tokio1))
+                .map_err(|e| {
+                    tracing::error!("Redis pool creation error: {}", e)
+                })
                 .ok()
         });
 
+        let jwt_service = JwtService::new(config);
+
+        let user_repo = SqlxRepo::new(pool);
+        let auth_handler = AuthHandler::new(user_repo, jwt_service);
+
         AppState { 
             auth_handler,
-            redis_client 
+            redis_pool 
         }
+    }
+
+    /// Helper method to access Redis
+    pub async fn with_redis<F, Fut, T>(&self, op: F) -> Result<T, AuthError>
+    where 
+        F: FnOnce(deadpool_redis::Connection) -> Fut,
+        Fut: Future<Output = Result<T, AuthError>>,
+    {
+        if let Some(pool) = &self.redis_pool {
+            let conn = pool.get().await
+                .map_err(|e| AuthError::RedisConnection(e.to_string()))?;
+            op(conn).await
+        } else {
+            Err(AuthError::RedisNotConfigured)
+        }
+    }
+
+    pub async fn check_redis_health(&self) -> &'static str {
+        if let Some(pool) = &self.redis_pool {
+            match pool.get().await {
+                Ok(mut conn) => {
+                    match conn.ping::<String>().await {
+                        Ok(pong) if pong == "PONG" => "OK".into(),
+                        Ok(_) => "Unexpected response",
+                        Err(_) => "Ping failed"
+                    }
+                }
+                Err(_) => "Connection failed",
+            }
+        } else {
+            "Not configured".into()
+        }
+    }
+}
+
+#[async_trait]
+impl RedisService for AppState {
+    async fn revoke_token(&self, prefix: &str, token: &str, ttl_seconds: usize) -> Result<(), AuthError> {
+        if ttl_seconds == 0 {
+            return Ok(());
+        }
+        
+        self.with_redis(|mut conn| async move {
+            conn.set_ex::<String, &str, usize>(
+                format!("{}:{}", prefix, token),
+                "1",
+                ttl_seconds as u64
+            ).await
+            .map_err(|e| AuthError::RedisOperation(e.to_string()))?;
+            Ok(())
+        }).await
+    }
+
+    async fn is_token_revoked(&self, prefix: &str, token: &str) -> Result<bool, AuthError> {
+        self.with_redis(|mut conn| async move {
+            let exists: bool = conn
+                .exists(format!("{}:{}", prefix, token))
+                .await
+                .map_err(|e| AuthError::RedisOperation(e.to_string()))?;
+            Ok(exists)
+        }).await
     }
 }

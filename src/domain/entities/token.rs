@@ -1,4 +1,5 @@
 use serde::{ Serialize, Deserialize };
+use validator::Validate;
 
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
@@ -35,4 +36,10 @@ pub struct RefreshClaims {
     pub sub: String,
     pub iat: usize,
     pub exp: usize,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct RefreshTokenRequest {
+    #[validate(length(min = 32, message = "Invalid token format"))]
+    pub refresh_token: String,
 }

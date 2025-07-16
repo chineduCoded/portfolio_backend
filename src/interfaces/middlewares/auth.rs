@@ -64,17 +64,10 @@ where
 
             let jwt_service = &state.auth_handler.token_service;
 
-            let auth_header = req.headers().get("Authorization")
+            let token = extract_token(&req)
                 .ok_or(AuthError::MissingCredentials)?;
 
-            let token_str = auth_header.to_str().map_err(|_| AuthError::InvalidToken)?;
-            let token = token_str.strip_prefix("Bearer ").ok_or(AuthError::InvalidToken)?;
-
-            if jwt_service.is_revoked(token)? {
-                return Err(AuthError::InvalidToken.into())
-            }
-
-            let claims = jwt_service.decode_jwt(token).map_err(|e| {
+            let claims = jwt_service.decode_jwt(&token).map_err(|e| {
                 tracing::warn!("JWT decode failed: {}", e);
                 e
             })?;
@@ -85,3 +78,15 @@ where
     }
 }
 
+fn extract_token(request: &ServiceRequest) -> Option<String> {
+    request.headers()
+        .get("Authorization")
+        .and_then(|header| header.to_str().ok())
+        .and_then(|header| {
+            if header.starts_with("Bearer ") {
+                Some(header[7..].to_string())
+            } else {
+                None
+            }
+        })
+}

@@ -110,3 +110,31 @@ pub struct NewUserResponse {
     pub id: Uuid,
     pub message: String,
 }
+
+#[derive(Serialize)]
+pub struct PublicUser {
+    pub id: Uuid,
+    pub email: String,
+    pub username: Option<String>,
+    pub is_admin: bool,
+    pub is_verified: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<User> for PublicUser {
+    fn from(user: User) -> Self {
+        PublicUser {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            is_admin: user.is_admin,
+            is_verified: user.is_verified,
+            created_at: user.created_at,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct LogoutRequest {
+    pub refresh_token: String,
+}

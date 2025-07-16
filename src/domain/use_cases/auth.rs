@@ -1,12 +1,15 @@
+use actix_web::HttpRequest;
+use chrono::Utc;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::entities::token::AuthResponse;
-use crate::entities::user::{LoginUser, NewUser, NewUserResponse, User};
+use crate::entities::user::{LoginUser, NewUser, NewUserResponse, PublicUser, User};
 use crate::errors::{AppError, AuthError};
 use crate::interfaces::repositories::user::UserRepository;
 use crate::auth::password::{hash_password, verify_password};
 use crate::repositories::token::TokenServiceRepository;
+use crate::AppState;
 
 pub struct AuthHandler<R, T>
 where 
@@ -87,15 +90,42 @@ where
     }
 
     /// Refreshes the access token using the refresh token
-    pub async fn refresh_token(&self, token: &str) -> Result<AuthResponse, AuthError> {
+    pub async fn refresh_token(
+        &self, token: &str,
+        state: &AppState
+    ) -> Result<AuthResponse, AuthError> {
+        if token.trim().is_empty() {
+            return  Err(AuthError::InvalidToken);
+        }
+
+        if self.token_service.is_revoked(token, state).await? {
+            return Err(AuthError::TokenRevoked);
+        }
+
         let decoded = self.token_service.decode_refresh_jwt(token)?;
+
+        if decoded.claims.exp < Utc::now().timestamp() as usize {
+            return Err(AuthError::TokenExpired);
+        }
+
         let user_id = Uuid::parse_str(&decoded.claims.sub)
             .map_err(|_| AuthError::InvalidUserId)?;
         
         let user = self.user_repo.get_user_by_id(&user_id)
             .await
-            .map_err(|_| AuthError::WrongCredentials)?
-            .ok_or(AuthError::WrongCredentials)?;
+            .map_err(|e| {
+                tracing::error!("Database error during refresh: {}", e);
+                AuthError::WrongCredentials
+            })?
+            .ok_or_else(|| {
+                tracing::warn!("Refresh attempt for non-existent user: {}", user_id);
+                AuthError::WrongCredentials
+            })?;
+
+        if user.deleted_at.is_some() {
+            tracing::warn!("Refresh attempt for deactivated user: {}", user_id);
+            return Err(AuthError::WrongCredentials);
+        }
         
         self.create_auth_response(&user)
     }
@@ -110,5 +140,39 @@ where
         }
 
         self.user_repo.delete_user(&user_id, &current_user.id).await
+    }
+
+    pub async fn me(&self, user_id: Uuid) -> Result<PublicUser, AppError> {
+        self.user_repo.get_user_by_id(&user_id)
+            .await?
+            .map(PublicUser::from)
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))
+    }
+
+    pub async fn logout(
+        &self, 
+        refresh_token: &str, 
+        access_token: &str,
+        state: &AppState
+    ) -> Result<(), AuthError> {
+        self.token_service.revoke_refresh_token(refresh_token, state).await?;
+
+        self.token_service.blacklist_access_token(access_token, state).await?;
+
+        Ok(())
+    }
+
+    /// Extract token from Authorization header
+    pub fn extract_token(&self, request: &HttpRequest) -> Option<String> {
+        request.headers()
+            .get("Authorization")
+            .and_then(|header| header.to_str().ok())
+            .and_then(|header| {
+                if header.starts_with("Bearer ") {
+                    Some(header[7..].to_string())
+                } else {
+                    None
+                }
+            })
     }
 }

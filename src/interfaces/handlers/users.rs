@@ -1,7 +1,7 @@
-use actix_web::{delete, web, HttpResponse, Responder};
+use actix_web::{delete, http::StatusCode, web, HttpResponse, Responder};
 use uuid::Uuid;
 
-use crate::{errors::AppError, repositories::user::UserRepository, use_cases::extractors::AuthClaims, AppState};
+use crate::{errors::AppError, handlers::json_error::json_error, repositories::user::UserRepository, use_cases::extractors::AuthClaims, AppState};
 
 
 
@@ -13,7 +13,13 @@ pub async fn delete_user(
 ) -> impl Responder {
     let user_uuid = match Uuid::parse_str(&claims.0.sub) {
         Ok(uuid) => uuid,
-        Err(_) => return HttpResponse::BadRequest().json("Invalid user ID in claims"),
+        Err(_) => {
+            return json_error(
+                StatusCode::BAD_REQUEST,
+                "Invalid User",
+                "Invalid user ID in claims"
+            )
+        }
     };
 
     let current_user = match state.auth_handler.user_repo.get_user_by_id(&user_uuid).await {
@@ -26,17 +32,33 @@ pub async fn delete_user(
 
     match state.auth_handler.delete_user(user_id.into_inner(), &current_user).await {
         Ok(_) => HttpResponse::NoContent().finish(),
-        Err(AppError::ForbiddenAccess) => HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "Forbidden"
-        })),
-        Err(AppError::NotFound(msg)) => HttpResponse::NotFound().json(serde_json::json!({
-            "error": msg
-        })),
-        Err(AppError::Conflict(msg)) => HttpResponse::Conflict().json(serde_json::json!({
-            "error": msg
-        })),
-        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": e.to_string()
-        })),
+        Err(AppError::ForbiddenAccess) => {
+            return json_error(
+                StatusCode::FORBIDDEN,
+                "Forbidden",
+                "Forbidden access"
+            )
+        }
+        Err(AppError::NotFound(msg)) => {
+            return json_error(
+                StatusCode::NOT_FOUND,
+                "User Not Found",
+                &msg
+            )
+        }
+        Err(AppError::Conflict(msg)) => {
+            return json_error(
+                StatusCode::CONFLICT,
+                "Conflicts",
+                &msg
+            )
+        }
+        Err(_) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+                "Something went wrong"
+            )
+        }
     }
 }

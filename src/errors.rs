@@ -154,6 +154,18 @@ pub enum AuthError {
 
     #[display("Forbidden: {_0}")]
     Forbidden(String),
+
+    #[display("Redis not configured")]
+    RedisNotConfigured,
+
+    #[display("Token revoked")]
+    TokenRevoked,
+
+    #[display("Redis connection failed: {_0}")]
+    RedisConnection(String),
+    
+    #[display("Redis operation failed: {_0}")]
+    RedisOperation(String),
 }
 
 impl ResponseError for AuthError {
@@ -178,6 +190,10 @@ impl ResponseError for AuthError {
             AuthError::PasswordError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthError::AuthenticationFailed => StatusCode::UNAUTHORIZED,
             AuthError::Forbidden(_) => StatusCode::FORBIDDEN,
+            AuthError::RedisNotConfigured => StatusCode::BAD_REQUEST,
+            AuthError::TokenRevoked => StatusCode::UNAUTHORIZED,
+            AuthError::RedisConnection(_) => StatusCode::BAD_REQUEST,
+            AuthError::RedisOperation(_) => StatusCode::BAD_REQUEST,
         }
     }
 }

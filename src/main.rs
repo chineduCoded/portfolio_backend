@@ -6,8 +6,7 @@ use portfolio_backend::{
     graceful_shutdown::shutdown_signal,
     background_task::start_purge_task,
     handlers::{auth::{login, register}, 
-    system::health_check, users::delete_user}, 
-    middlewares::auth::AuthMiddleware, 
+    system::health_check, users::delete_user},
     settings::AppConfig, AppState
 };
 
@@ -18,7 +17,7 @@ async fn home() -> impl Responder {
         "status": "operational",
         "version": env!("CARGO_PKG_VERSION"),
         "author": "Chinedu Elijah Okoronkwo",
-        "repository": "https://github.com/chineduCoded/portfolio_api.git",
+        "repository": "https://github.com/chineduCoded/portfolio_backend.git",
         "documentation": "/docs"
     }))
 }
@@ -63,6 +62,11 @@ async fn main() -> std::io::Result<()> {
             .service(home)
 
             .service(
+                web::scope("/system")
+                    .service(health_check)   
+            )
+
+            .service(
                 web::scope("/auth")
                     .service(register)
                     .service(login)
@@ -70,9 +74,7 @@ async fn main() -> std::io::Result<()> {
 
             .service(
                 web::scope("/api")
-                    .wrap(AuthMiddleware)
                     .service(delete_user)
-                    .service(health_check)
             )
     })
     .bind(server_addr)?

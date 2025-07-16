@@ -1,9 +1,9 @@
+use async_trait::async_trait;
 use jsonwebtoken::TokenData;
 use uuid::Uuid;
-use crate::{entities::{token::{Claims, RefreshClaims}, user::User}, errors::AuthError};
+use crate::{entities::{token::{Claims, RefreshClaims}, user::User}, errors::AuthError, AppState};
 
-
-
+#[async_trait]
 pub trait TokenServiceRepository: Send + Sync {
     /// Creates a new JWT for the user
     fn create_jwt(&self, user: &User) -> Result<String, AuthError>;
@@ -17,6 +17,12 @@ pub trait TokenServiceRepository: Send + Sync {
     /// Decodes a refresh JWT and returns the claims
     fn decode_refresh_jwt(&self, token: &str) -> Result<TokenData<RefreshClaims>, AuthError>;
 
+    /// Revoke JWT
+    async fn revoke_refresh_token(&self, token: &str, state: &AppState) -> Result<(), AuthError>;
+
+    /// Blacklist access token
+    async fn blacklist_access_token(&self, token: &str, state: &AppState) -> Result<(), AuthError>;
+
     /// Checks if a JWT is revoked
-    fn is_revoked(&self, token: &str) -> Result<bool, AuthError>;
+    async fn is_revoked(&self, token: &str, state: &AppState) -> Result<bool, AuthError>;
 }

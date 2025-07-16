@@ -1,5 +1,4 @@
 use actix_web::{web, get, HttpResponse, Responder};
-use redis::{AsyncCommands, RedisResult};
 use humantime::format_duration;
 use once_cell::sync::Lazy;
 use chrono::Utc;
@@ -60,21 +59,7 @@ async fn build_health_response(state: &web::Data<AppState>) -> HealthCheckRespon
         Err(_) => "Unavailable"
     };
 
-    let redis_status = if let Some(redis) = &state.redis_client {
-        match redis.get_multiplexed_async_connection().await {
-            Ok(mut conn) => {
-                let result: RedisResult<String> = conn.ping().await;
-                match result {
-                    Ok(pong) if pong == "PONG" => "OK",
-                    _ => "Unavailable",
-                }
-            }
-            Err(_) => "Unavailable",
-        }
-    } else {
-        "Not configured"
-    };
-
+    let redis_status = state.check_redis_health().await;
     let process = sys.process(sysinfo::get_current_pid().unwrap_or(0.into()));
     let memory_usage = process.map_or("Unknown".to_string(), |p| 
         format!("{:.2} MB", p.memory() as f64 / 1024.0 / 1024.0)
@@ -95,7 +80,9 @@ async fn build_health_response(state: &web::Data<AppState>) -> HealthCheckRespon
 }
 
 #[get("/health")]
-async fn health_check(state: web::Data<AppState>) -> impl Responder {
+async fn health_check(
+    state: web::Data<AppState>,
+) -> impl Responder {
     let now = Utc::now().timestamp();
     let last = LAST_CHECK.load(Ordering::Relaxed);
 
