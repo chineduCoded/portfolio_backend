@@ -1,12 +1,11 @@
 use actix_web::http::StatusCode;
 use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
-use uuid::Uuid;
 use crate::domain::entities::user::{NewUser, LoginUser};
 use crate::entities::token::{AuthResponse, RefreshTokenRequest};
 use crate::entities::user::LogoutRequest;
-use crate::errors::{AppError, AuthError};
+use crate::errors::AuthError;
 use crate::handlers::json_error::json_error;
-use crate::use_cases::extractors::AuthClaims;
+use crate::use_cases::extractors::AdminClaims;
 use crate::AppState;
 
 #[post("/register")]
@@ -76,34 +75,6 @@ pub async fn refresh_token(
     }
 }
 
-#[get("/me")]
-pub async fn me(
-    claims: AuthClaims,
-    state: web::Data<AppState>
-) -> impl Responder {
-    let user_id = match Uuid::parse_str(&claims.0.sub) {
-        Ok(uuid) => uuid,
-        Err(_) => return json_error(
-            StatusCode::BAD_REQUEST,
-            "Invalid User",
-            "Invalid user ID in claims"
-        )
-    };
-
-    match state.auth_handler.me(user_id).await {
-        Ok(user) => HttpResponse::Ok().json(user),
-        Err(AppError::NotFound(_)) => return json_error(
-            StatusCode::NOT_FOUND,
-            "User Not Found",
-            "User not found or does not exist"
-        ),
-        Err(_) => json_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal Server Error",
-            "Something went wrong"
-        )
-    }
-}
 
 #[post("/logout")]
 pub async fn logout(
@@ -139,4 +110,14 @@ pub async fn logout(
             )
         },
     }
+}
+
+#[get("/admin/dashboard")]
+pub async fn admin_dashboard(
+    admin: AdminClaims,
+    _state: web::Data<AppState>
+) -> impl Responder {
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": format!("Welcome, admin {}", admin.0.sub)
+    }))
 }

@@ -9,6 +9,7 @@ use crate::{entities::user::{User, UserInsert}, errors::AppError, repositories::
 pub trait UserRepository: Send + Sync {
     async fn check_connection(&self) -> Result<(), AppError>;
     async fn user_exists(&self, id: &Uuid) -> Result<bool, AppError>;
+    async fn count_users(&self) -> Result<u64, AppError>;
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AppError>;
     async fn create_user(&self, user: &UserInsert) -> Result<Uuid, AppError>;
     async fn get_user_by_id(&self, id: &Uuid) -> Result<Option<User>, AppError>;
@@ -38,6 +39,16 @@ impl UserRepository for SqlxRepo {
         let exists = exists.unwrap_or(false);
 
         Ok(exists)
+    }
+
+    async fn count_users(&self) -> Result<u64, AppError> {
+        let count: i64 = sqlx::query_scalar!("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(AppError::from)?
+            .unwrap_or(0);
+
+        Ok(count as u64)
     }
 
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, AppError> {

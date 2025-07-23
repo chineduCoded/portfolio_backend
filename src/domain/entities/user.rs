@@ -66,6 +66,8 @@ pub struct NewUser {
     )]
     pub password: String,
 
+    pub username: Option<String>,
+
     #[serde(default = "default_false")]
     pub is_admin: bool,
     
@@ -79,13 +81,13 @@ fn default_false() -> bool {
 }
 
 impl NewUser {
-    pub fn prepare_for_insert(&self, password_hash: String) -> UserInsert {
+    pub fn prepare_for_insert(&self, password_hash: String, is_first_user: bool) -> UserInsert {
         UserInsert {
             email: self.email.clone(),
-            username: None,
+            username: self.username.clone(),
             password_hash,
-            is_admin: false,
-            is_verified: false,
+            is_admin: is_first_user || self.is_admin,
+            is_verified: is_first_user || self.is_verified,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             deleted_at: None,

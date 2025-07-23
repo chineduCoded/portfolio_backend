@@ -1,23 +1,20 @@
 use actix_web::{
+    body::BoxBody,
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
-    Error, web, HttpMessage
+    web, Error, HttpMessage, HttpResponse,
 };
 use futures_util::future::{ok, Ready, LocalBoxFuture};
-use std::{
-    rc::Rc,
-    task::{Poll, Context},
-};
+use std::{rc::Rc, task::{Context, Poll}};
 
-use crate::{errors::AuthError, AppState};
+use crate::{entities::token::Claims, errors::AuthError, AppState};
 
 pub struct AuthMiddleware;
 
-impl<S, B> Transform<S, ServiceRequest> for AuthMiddleware
+impl<S> Transform<S, ServiceRequest> for AuthMiddleware
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<BoxBody>, Error = Error> + 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<BoxBody>;
     type Error = Error;
     type InitError = ();
     type Transform = AuthMiddlewareService<S>;
@@ -34,12 +31,11 @@ pub struct AuthMiddlewareService<S> {
     service: Rc<S>,
 }
 
-impl<S, B> Service<ServiceRequest> for AuthMiddlewareService<S>
+impl<S> Service<ServiceRequest> for AuthMiddlewareService<S>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    B: 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<BoxBody>, Error = Error> + 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<BoxBody>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -51,42 +47,72 @@ where
         let service = Rc::clone(&self.service);
 
         Box::pin(async move {
-            // Skip auth for public routes
             let path = req.path();
             let method = req.method().as_str();
-            let open_paths = ["/login", "/register"];
-            if open_paths.contains(&path) && method == "POST" {
+
+            if is_public_route(path, method) {
                 return service.call(req).await;
             }
 
             let state = req.app_data::<web::Data<AppState>>()
-                .ok_or(AuthError::MissingJwtService)?;
+                .ok_or_else(|| {
+                    tracing::error!("AppState missing in middleware");
+                    AuthError::MissingJwtService
+                })?;
 
-            let jwt_service = &state.auth_handler.token_service;
+            let claims = get_valid_claims(&req, state)?;
 
-            let token = extract_token(&req)
-                .ok_or(AuthError::MissingCredentials)?;
+            if let Err(forbidden_response) = enforce_admin_access(path, &claims) {
+                return Ok(custom_error_response(req, forbidden_response));
+            }
 
-            let claims = jwt_service.decode_jwt(&token).map_err(|e| {
-                tracing::warn!("JWT decode failed: {}", e);
-                e
-            })?;
-
-            req.extensions_mut().insert(claims.claims);
+            req.extensions_mut().insert(claims);
             service.call(req).await
         })
     }
 }
 
-fn extract_token(request: &ServiceRequest) -> Option<String> {
-    request.headers()
+fn is_public_route(path: &str, method: &str) -> bool {
+    matches!(
+        (path, method),
+        ("/", "GET") |
+        ("/auth/refresh", "POST") |
+        ("/auth/login", "POST") |
+        ("/auth/register", "POST")
+    )
+}
+
+fn extract_token(req: &ServiceRequest) -> Option<String> {
+    req.headers()
         .get("Authorization")
         .and_then(|header| header.to_str().ok())
         .and_then(|header| {
-            if header.starts_with("Bearer ") {
-                Some(header[7..].to_string())
+            let parts: Vec<&str> = header.split_whitespace().collect();
+            if parts.len() == 2 && parts[0].eq_ignore_ascii_case("bearer") {
+                Some(parts[1].to_string())
             } else {
                 None
             }
         })
+}
+
+fn get_valid_claims(req: &ServiceRequest, state: &AppState) -> Result<Claims, AuthError> {
+    let token = extract_token(req).ok_or(AuthError::MissingCredentials)?;
+    let decoded = state.auth_handler.token_service.decode_jwt(&token)?;
+    Ok(decoded.claims)
+}
+
+fn enforce_admin_access(path: &str, claims: &Claims) -> Result<(), HttpResponse> {
+    if path.starts_with("/admin") && !claims.admin {
+        return Err(
+            HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "Admin access required"
+            }))
+        );
+    }
+    Ok(())
+}
+
+fn custom_error_response(req: ServiceRequest, res: HttpResponse) -> ServiceResponse<BoxBody> {
+    req.into_response(res)
 }

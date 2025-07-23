@@ -1,8 +1,45 @@
-use actix_web::{delete, http::StatusCode, web, HttpResponse, Responder};
+use actix_web::{delete, get, http::StatusCode, web, HttpResponse, Responder};
 use uuid::Uuid;
 
 use crate::{errors::AppError, handlers::json_error::json_error, repositories::user::UserRepository, use_cases::extractors::AuthClaims, AppState};
 
+#[get("users/me")]
+pub async fn me(
+    claims: AuthClaims,
+    state: web::Data<AppState>
+) -> impl Responder {
+    let user_id = match Uuid::parse_str(&claims.0.sub) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            tracing::warn!("Invalid user ID in claims: {}", claims.0.sub);
+            return json_error(
+            StatusCode::BAD_REQUEST,
+            "Bad Request",
+            "Invalid user ID in claims"
+        )}
+    };
+
+    match state.auth_handler.me(user_id).await {
+        Ok(user) => HttpResponse::Ok().json(user),
+        Err(AppError::NotFound(_)) => {
+            tracing::warn!("User not found for ID: {}", user_id);
+            json_error(
+                StatusCode::NOT_FOUND,
+                "Not Found",
+                "User not found or does not exist"
+            )
+        }
+        
+        Err(e) => {
+            tracing::error!("Error fetching user data: {}", e);
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+                "Something went wrong"
+            )
+        }
+    }
+}
 
 
 #[delete("/users/{user_id}")]
@@ -16,7 +53,7 @@ pub async fn delete_user(
         Err(_) => {
             return json_error(
                 StatusCode::BAD_REQUEST,
-                "Invalid User",
+                "Bad Request",
                 "Invalid user ID in claims"
             )
         }

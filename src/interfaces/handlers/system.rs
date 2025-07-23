@@ -8,7 +8,7 @@ use std::{
 };
 use sysinfo::System;
 use serde::Serialize;
-use crate::{constants::START_TIME, repositories::user::UserRepository, AppState};
+use crate::{constants::START_TIME, repositories::user::UserRepository, use_cases::extractors::AdminClaims, AppState};
 
 #[derive(Serialize, Clone, Default)]
 struct SystemInfo {
@@ -80,7 +80,8 @@ async fn build_health_response(state: &web::Data<AppState>) -> HealthCheckRespon
 }
 
 #[get("/health")]
-async fn health_check(
+async fn admin_health_check(
+    _admin: AdminClaims,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let now = Utc::now().timestamp();
@@ -99,7 +100,7 @@ async fn health_check(
         match CACHED_STATUS.read() {
             Ok(response) => HttpResponse::Ok().json(response.clone()),
             Err(e) => {
-                tracing::warn!("HealthCheck cache lock poisoned: {}", e);
+                tracing::warn!("Health Check cache lock poisoned: {}", e);
                 let response = build_health_response(&state).await;
                 HttpResponse::Ok().json(response)
             }
