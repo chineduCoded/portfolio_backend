@@ -25,17 +25,27 @@ pub struct Claims {
     pub admin: bool,
     pub verified: bool,
     pub exp: usize,
+    pub token_type: TokenType,
     pub iat: usize,
     // iss: Option<String>,
     // aud: Option<String>,
     // nbf: Option<usize>,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenType {
+    Access,
+    Refresh,
+}
+
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RefreshClaims {
     pub sub: String,
     pub iat: usize,
     pub exp: usize,
+    pub token_type: TokenType,
 }
 
 #[derive(Debug, Deserialize, Validate)]

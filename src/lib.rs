@@ -100,12 +100,13 @@ impl RedisService for AppState {
         }
         
         self.with_redis(|mut conn| async move {
-            conn.set_ex::<String, &str, usize>(
+            conn.set_ex::<_, _, ()>(
                 format!("{}:{}", prefix, token),
                 "1",
                 ttl_seconds as u64
             ).await
             .map_err(|e| AuthError::RedisOperation(e.to_string()))?;
+        
             Ok(())
         }).await
     }
@@ -119,4 +120,27 @@ impl RedisService for AppState {
             Ok(exists)
         }).await
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum TokenCheckMode {
+    Exists,     // Token is invalid if key exists (blacklist)
+    NotExists,  // Token is invalid if key doesn't exist (revocation)
+}
+
+pub async fn is_token_invalid(
+    redis_pool: &RedisPool,
+    key: &str,
+    mode: TokenCheckMode,
+) -> Result<bool, AuthError> {
+    let mut conn = redis_pool.get().await
+        .map_err(|e| AuthError::RedisOperation(e.to_string()))?;
+
+    let exists = conn.exists(key).await
+        .map_err(|e| AuthError::RedisOperation(e.to_string()))?;
+
+    Ok(match mode {
+        TokenCheckMode::Exists => exists,        // blacklisted if exists
+        TokenCheckMode::NotExists => !exists,    // revoked if not exists
+    })
 }

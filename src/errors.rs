@@ -134,8 +134,14 @@ pub enum AuthError {
     #[display("Token creation error")]
     TokenCreation,
 
+    #[display("Token user does not match")]
+    TokenUserMismatch,
+
     #[display("Token expired")]
     TokenExpired,
+
+    #[display("Token revoked")]
+    RevokedToken,
 
     #[display("Missing credentials")]
     MissingCredentials,
@@ -161,6 +167,9 @@ pub enum AuthError {
     #[display("Token revoked")]
     TokenRevoked,
 
+    #[display("Invalid token type")]
+    InvalidTokenType,
+
     #[display("Redis connection failed: {_0}")]
     RedisConnection(String),
     
@@ -183,7 +192,9 @@ impl ResponseError for AuthError {
             AuthError::InvalidToken => StatusCode::UNAUTHORIZED,
             AuthError::WrongCredentials => StatusCode::UNAUTHORIZED,
             AuthError::TokenCreation => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthError::TokenUserMismatch => StatusCode::BAD_REQUEST,
             AuthError::TokenExpired => StatusCode::UNAUTHORIZED,
+            AuthError::RevokedToken => StatusCode::UNAUTHORIZED,
             AuthError::MissingCredentials => StatusCode::BAD_REQUEST,
             AuthError::MissingJwtService => StatusCode::INTERNAL_SERVER_ERROR,
             AuthError::InvalidUserId => StatusCode::BAD_REQUEST,
@@ -192,7 +203,8 @@ impl ResponseError for AuthError {
             AuthError::Forbidden(_) => StatusCode::FORBIDDEN,
             AuthError::RedisNotConfigured => StatusCode::BAD_REQUEST,
             AuthError::TokenRevoked => StatusCode::UNAUTHORIZED,
-            AuthError::RedisConnection(_) => StatusCode::BAD_REQUEST,
+            AuthError::InvalidTokenType => StatusCode::BAD_REQUEST,
+            AuthError::RedisConnection(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthError::RedisOperation(_) => StatusCode::BAD_REQUEST,
         }
     }

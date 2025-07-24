@@ -36,7 +36,7 @@ pub async fn login(
 pub async fn refresh_token(
     state: web::Data<AppState>,
     request: web::Json<RefreshTokenRequest>,
-) -> HttpResponse {
+) -> impl Responder {
     match state.auth_handler.refresh_token(&request.refresh_token, &state).await {
         Ok(auth_response) => HttpResponse::Ok().json(AuthResponse {
             access_token: auth_response.access_token,
@@ -65,11 +65,18 @@ pub async fn refresh_token(
                     "Invalid Credentials",
                     "User wrong credentials"
                 ),
-                _ => return json_error(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Internal Server Error",
-                    "Something went wrong while refreshing token"
-                )
+                AuthError::RevokedToken => return json_error(
+                    StatusCode::UNAUTHORIZED,
+                    "Token Revoked",
+                    "Refresh token has been revoked"
+                ),
+                _ => {
+                    return json_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal Server Error",
+                        "Something went wrong while refreshing token"
+                    )
+                }
             }
         }
     }
@@ -93,6 +100,7 @@ pub async fn logout(
         }
     };
 
+
     match state.auth_handler.logout(&body.refresh_token, &access_token, &state).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({"message": "Logged out successfully"})),
         Err(AuthError::InvalidToken) => {
@@ -112,7 +120,7 @@ pub async fn logout(
     }
 }
 
-#[get("/admin/dashboard")]
+#[get("/dashboard")]
 pub async fn admin_dashboard(
     admin: AdminClaims,
     _state: web::Data<AppState>

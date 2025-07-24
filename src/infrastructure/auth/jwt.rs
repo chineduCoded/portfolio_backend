@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use jsonwebtoken::{encode, Header, decode, Validation, TokenData, Algorithm};
 use chrono::{Utc, Duration};
 use uuid::Uuid;
-use crate::entities::token::{Claims, RefreshClaims};
+use crate::entities::token::{Claims, RefreshClaims, TokenType};
 use crate::entities::user::User;
 use crate::repositories::token::TokenServiceRepository;
 use crate::settings::{AppConfig, JwtKeys};
@@ -39,6 +39,7 @@ impl JwtService {
             admin: user.is_admin,
             verified: user.is_verified,
             exp,
+            token_type: TokenType::Access,
             iat: now.timestamp() as usize,
         };
 
@@ -52,6 +53,7 @@ impl JwtService {
         let claims = RefreshClaims {
             sub: user_id.to_string(),
             exp,
+            token_type: TokenType::Refresh,
             iat: now.timestamp() as usize,
         };
 
@@ -105,14 +107,25 @@ impl TokenServiceRepository for JwtService {
     }
 
     async fn revoke_refresh_token(&self, token: &str, state: &AppState) -> Result<(), AuthError> {
-        let expiry = self.decode_refresh_jwt(token)?.claims.exp;
-        let ttl_seconds = expiry - Utc::now().timestamp() as usize;
+        let claims = self.decode_refresh_jwt(token)?.claims;
+        let now = Utc::now().timestamp() as usize;
+
+        if claims.exp <= now {
+            return Err(AuthError::InvalidToken);
+        }
+
+        let ttl_seconds = (claims.exp - now) as usize;
         state.revoke_token(REFRESH_DENY_PREFIX, token, ttl_seconds).await
     }
 
      async fn blacklist_access_token(&self, token: &str, state: &AppState) -> Result<(), AuthError> {
-        let decoded = self.decode_jwt(token)?;
-        let ttl_seconds = decoded.claims.exp - Utc::now().timestamp() as usize;
+        let claims = self.decode_jwt(token)?.claims;
+        let now = Utc::now().timestamp() as usize;
+        
+        if claims.exp <= now {
+            return Err(AuthError::InvalidToken);
+        }
+        let ttl_seconds = (claims.exp - now) as usize;
         state.revoke_token(ACCESS_DENY_PREFIX, token, ttl_seconds).await
     }
 

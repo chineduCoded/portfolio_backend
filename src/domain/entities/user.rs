@@ -136,7 +136,8 @@ impl From<User> for PublicUser {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct LogoutRequest {
+    #[validate(length(min = 32, message = "Invalid token format"))]
     pub refresh_token: String,
 }

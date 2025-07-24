@@ -6,7 +6,7 @@ use actix_web::{
 use futures_util::future::{ok, Ready, LocalBoxFuture};
 use std::{rc::Rc, task::{Context, Poll}};
 
-use crate::{entities::token::Claims, errors::AuthError, AppState};
+use crate::{entities::token::Claims, errors::AuthError, is_token_invalid, AppState, TokenCheckMode};
 
 pub struct AuthMiddleware;
 
@@ -59,6 +59,25 @@ where
                     tracing::error!("AppState missing in middleware");
                     AuthError::MissingJwtService
                 })?;
+            
+            let token = extract_token(&req)
+                .ok_or_else(|| {
+                    tracing::warn!("Missing or malformed Authorization header");
+                    AuthError::MissingCredentials
+                })?;
+            
+            if let Some(redis_pool) = &state.redis_pool {
+                let blacklist_key = format!("access_deny:{}", token);
+                let is_blacklisted = is_token_invalid(redis_pool, &blacklist_key, TokenCheckMode::Exists)
+                .await
+                .unwrap_or(false);
+
+                if is_blacklisted {
+                    return Ok(custom_error_response(req, HttpResponse::Unauthorized().json(serde_json::json!({
+                        "error": "Access token is blacklisted"
+                    }))));
+                }
+            }
 
             let claims = get_valid_claims(&req, state)?;
 

@@ -3,13 +3,13 @@ use chrono::Utc;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::entities::token::AuthResponse;
+use crate::entities::token::{AuthResponse, TokenType};
 use crate::entities::user::{LoginUser, NewUser, NewUserResponse, PublicUser, User};
 use crate::errors::{AppError, AuthError};
 use crate::interfaces::repositories::user::UserRepository;
 use crate::auth::password::{hash_password, verify_password};
 use crate::repositories::token::TokenServiceRepository;
-use crate::AppState;
+use crate::{is_token_invalid, AppState, TokenCheckMode};
 
 pub struct AuthHandler<R, T>
 where 
@@ -99,21 +99,28 @@ where
 
     /// Refreshes the access token using the refresh token
     pub async fn refresh_token(
-        &self, token: &str,
+        &self, 
+        token: &str,
         state: &AppState
     ) -> Result<AuthResponse, AuthError> {
         if token.trim().is_empty() {
             return  Err(AuthError::InvalidToken);
         }
 
-        if self.token_service.is_revoked(token, state).await? {
-            return Err(AuthError::TokenRevoked);
-        }
-
         let decoded = self.token_service.decode_refresh_jwt(token)?;
+
+        if decoded.claims.token_type != TokenType::Refresh {
+            return Err(AuthError::InvalidTokenType);
+        }
 
         if decoded.claims.exp < Utc::now().timestamp() as usize {
             return Err(AuthError::TokenExpired);
+        }
+
+        let redis_pool = state.redis_pool.as_ref().ok_or(AuthError::TokenCreation)?;
+        if is_token_invalid(redis_pool, token, TokenCheckMode::Exists).await? {
+            tracing::warn!("Refresh token not found in Redis or has been used: {}", token);
+            return Err(AuthError::RevokedToken)
         }
 
         let user_id = Uuid::parse_str(&decoded.claims.sub)
@@ -136,6 +143,21 @@ where
         }
         
         self.create_auth_response(&user)
+    }
+
+    pub async fn get_current_user(
+        &self, 
+        user_id: Uuid, 
+        current_user: &User
+    ) -> Result<PublicUser, AppError> {
+        if current_user.id != user_id && !current_user.is_admin {
+            return Err(AppError::ForbiddenAccess);
+        }
+
+        self.user_repo.get_user_by_id(&user_id)
+            .await?
+            .map(PublicUser::from)
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))
     }
 
     pub async fn delete_user(
@@ -163,8 +185,22 @@ where
         access_token: &str,
         state: &AppState
     ) -> Result<(), AuthError> {
-        self.token_service.revoke_refresh_token(refresh_token, state).await?;
+        let access_claims = self.token_service.decode_jwt(access_token)?;
+        let refresh_claims = self.token_service.decode_refresh_jwt(refresh_token)?;
+    
+        if access_claims.claims.sub != refresh_claims.claims.sub {
+            return Err(AuthError::TokenUserMismatch);
+        }
 
+        if access_claims.claims.token_type != TokenType::Access {
+            return Err(AuthError::InvalidTokenType);
+        }
+
+        if refresh_claims.claims.token_type != TokenType::Refresh {
+            return Err(AuthError::InvalidTokenType);
+        }
+
+        self.token_service.revoke_refresh_token(refresh_token, state).await?;
         self.token_service.blacklist_access_token(access_token, state).await?;
 
         Ok(())

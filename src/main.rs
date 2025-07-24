@@ -6,9 +6,9 @@ use portfolio_backend::{
     db::postgres::create_pool, 
     graceful_shutdown::shutdown_signal, 
     handlers::{
-        auth::{login, register}, 
+        auth::{admin_dashboard, login, logout, refresh_token, register}, 
         system::admin_health_check, 
-        users::{delete_user, me}}, 
+        users::{delete_user, get_user, me}}, 
     middlewares::auth::AuthMiddleware, 
     settings::AppConfig, AppState
 };
@@ -67,19 +67,23 @@ async fn main() -> std::io::Result<()> {
 
             .service(
                 web::scope("/admin")
-                    .service(admin_health_check)   
+                    .service(admin_health_check)
+                    .service(admin_dashboard)
             )
 
             .service(
                 web::scope("/auth")
                     .service(register)
                     .service(login)
+                    .service(refresh_token)
+                    .service(logout)
             )
 
             .service(
                 web::scope("/api")
-                    .service(delete_user)
                     .service(me)
+                    .service(get_user)
+                    .service(delete_user)
             )
     })
     .bind(server_addr)?
