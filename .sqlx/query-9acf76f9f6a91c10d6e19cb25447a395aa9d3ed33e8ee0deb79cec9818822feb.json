@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM users WHERE deleted_at < NOW() - INTERVAL '7 days'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "9acf76f9f6a91c10d6e19cb25447a395aa9d3ed33e8ee0deb79cec9818822feb"
+}

@@ -1,7 +1,7 @@
 use serde::{ Serialize, Deserialize };
 use validator::Validate;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AuthResponse {
     pub access_token: String,
     pub refresh_token: String,

@@ -1,29 +1,15 @@
 use std::env;
 
-use actix_web::{get, middleware::NormalizePath, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{middleware::NormalizePath, web, App, HttpServer};
 use portfolio_backend::{
     background_task::start_purge_task, 
     db::postgres::create_pool, 
     graceful_shutdown::shutdown_signal, 
-    handlers::{
-        auth::{admin_dashboard, login, logout, refresh_token, register}, 
-        system::admin_health_check, 
-        users::{delete_user, get_user, me}}, 
     middlewares::auth::AuthMiddleware, 
-    settings::AppConfig, AppState
+    routes::configure_routes, 
+    settings::AppConfig, 
+    AppState,
 };
-
-#[get("/")]
-async fn home() -> impl Responder {
-    HttpResponse::Ok().json(serde_json::json!({
-        "message": "Welcome to my Portfolio Web API!",
-        "status": "Ok",
-        "version": env!("CARGO_PKG_VERSION"),
-        "author": "Chinedu Elijah Okoronkwo",
-        "repository": "https://github.com/chineduCoded/portfolio_backend.git",
-        "documentation": "/docs"
-    }))
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -63,28 +49,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .wrap(NormalizePath::trim())
             .wrap(AuthMiddleware)
-            .service(home)
-
-            .service(
-                web::scope("/admin")
-                    .service(admin_health_check)
-                    .service(admin_dashboard)
-            )
-
-            .service(
-                web::scope("/auth")
-                    .service(register)
-                    .service(login)
-                    .service(refresh_token)
-                    .service(logout)
-            )
-
-            .service(
-                web::scope("/api")
-                    .service(me)
-                    .service(get_user)
-                    .service(delete_user)
-            )
+            .configure(configure_routes)
     })
     .bind(server_addr)?
     .run();

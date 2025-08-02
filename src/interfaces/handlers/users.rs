@@ -1,9 +1,14 @@
-use actix_web::{delete, get, http::StatusCode, web, HttpResponse, Responder};
+use actix_web::{http::StatusCode, web, HttpResponse, Responder};
 use uuid::Uuid;
 
-use crate::{errors::AppError, handlers::json_error::json_error, repositories::user::UserRepository, use_cases::extractors::AuthClaims, AppState};
+use crate::{ 
+    errors::AppError, 
+    handlers::json_error::json_error, 
+    repositories::user::UserRepository, 
+    use_cases::extractors::AuthClaims, 
+    AppState
+};
 
-#[get("users/me")]
 pub async fn me(
     claims: AuthClaims,
     state: web::Data<AppState>
@@ -41,7 +46,6 @@ pub async fn me(
     }
 }
 
-#[get("/users/{user_id}")]
 pub async fn get_user(
     state: web::Data<AppState>,
     user_id: web::Path<Uuid>,
@@ -87,7 +91,6 @@ pub async fn get_user(
     }
 }
 
-#[delete("/users/{user_id}")]
 pub async fn delete_user(
     state: web::Data<AppState>,
     user_id: web::Path<Uuid>,

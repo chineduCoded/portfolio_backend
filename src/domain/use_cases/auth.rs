@@ -39,8 +39,8 @@ where
         let hashed_password = hash_password(&request.password)?;
 
         let existing_count = self.user_repo.count_users().await?;
-
         let is_first_user = existing_count == 0;
+        
         if !is_first_user && request.is_admin {
             return Err(AppError::Conflict("Only the first user can be an admin".to_string()));
         }

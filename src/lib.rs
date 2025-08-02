@@ -15,7 +15,7 @@ pub mod graceful_shutdown;
 pub mod background_task;
 
 pub use domain::{entities, use_cases};
-pub use interfaces::{handlers, repositories, middlewares};
+pub use interfaces::{handlers, repositories, middlewares, routes};
 pub use infrastructure::{auth, db, web};
 
 use auth::jwt::JwtService;

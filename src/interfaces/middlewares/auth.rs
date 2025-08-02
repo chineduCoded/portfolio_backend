@@ -79,7 +79,21 @@ where
                 }
             }
 
-            let claims = get_valid_claims(&req, state)?;
+            let claims = match get_valid_claims(&req) {
+                Ok(claims) => claims,
+                Err(AuthError::MissingCredentials) => {
+                    tracing::warn!("Missing or invalid credentials");
+                    return Ok(custom_error_response(req, HttpResponse::Unauthorized().json(serde_json::json!({
+                        "error": "Missing or invalid credentials"
+                    }))));
+                }
+                Err(_) => {
+                    tracing::error!("Failed to decode JWT");
+                    return Ok(custom_error_response(req, HttpResponse::InternalServerError().json(serde_json::json!({
+                        "error": "Internal server error"
+                    }))));
+                }
+            };
 
             if let Err(forbidden_response) = enforce_admin_access(path, &claims) {
                 return Ok(custom_error_response(req, forbidden_response));
@@ -92,12 +106,16 @@ where
 }
 
 fn is_public_route(path: &str, method: &str) -> bool {
+    if method == "OPTIONS" {
+        return true;
+    }
+    
     matches!(
         (path, method),
         ("/", "GET") |
-        ("/auth/refresh", "POST") |
-        ("/auth/login", "POST") |
-        ("/auth/register", "POST")
+        ("/api/v1/auth/refresh", "POST") |
+        ("/api/v1/auth/login", "POST") |
+        ("/api/v1/auth/register", "POST")
     )
 }
 
@@ -115,7 +133,10 @@ fn extract_token(req: &ServiceRequest) -> Option<String> {
         })
 }
 
-fn get_valid_claims(req: &ServiceRequest, state: &AppState) -> Result<Claims, AuthError> {
+fn get_valid_claims(req: &ServiceRequest) -> Result<Claims, AuthError> {
+    let state = req.app_data::<web::Data<AppState>>()
+        .ok_or(AuthError::MissingJwtService)?;
+    
     let token = extract_token(req).ok_or(AuthError::MissingCredentials)?;
     let decoded = state.auth_handler.token_service.decode_jwt(&token)?;
     Ok(decoded.claims)
@@ -123,6 +144,8 @@ fn get_valid_claims(req: &ServiceRequest, state: &AppState) -> Result<Claims, Au
 
 fn enforce_admin_access(path: &str, claims: &Claims) -> Result<(), HttpResponse> {
     if path.starts_with("/admin") && !claims.admin {
+        tracing::warn!("Admin access required for path: {}", path);
+        tracing::warn!("User claims: {:?}", claims);
         return Err(
             HttpResponse::Forbidden().json(serde_json::json!({
                 "error": "Admin access required"

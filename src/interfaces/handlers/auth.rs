@@ -1,8 +1,8 @@
 use actix_web::http::StatusCode;
 use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
-use crate::domain::entities::user::{NewUser, LoginUser};
+use crate::domain::entities::user::LoginUser;
 use crate::entities::token::{AuthResponse, RefreshTokenRequest};
-use crate::entities::user::LogoutRequest;
+use crate::entities::user::{LogoutRequest, NewUser};
 use crate::errors::AuthError;
 use crate::handlers::json_error::json_error;
 use crate::use_cases::extractors::AdminClaims;

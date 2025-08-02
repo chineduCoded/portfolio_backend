@@ -52,7 +52,7 @@ impl From<User> for UserResponse {
     }
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Serialize, Validate)]
 pub struct NewUser {
     #[validate(email(message = "Invalid email format"))]
     pub email: String,
@@ -97,7 +97,7 @@ impl NewUser {
 }
 
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Serialize, Validate)]
 pub struct LoginUser {
     #[validate(email(message = "Invalid email format"))]
     pub email: String,
