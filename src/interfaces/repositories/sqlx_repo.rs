@@ -1,12 +1,11 @@
 use sqlx::PgPool;
 
 #[derive(Clone)]
-pub struct SqlxRepo {
+pub struct SqlxUserRepo {
     pub pool: PgPool,
 }
 
-impl SqlxRepo {
-    pub fn new(pool: PgPool) -> Self {
-        SqlxRepo { pool }
-    }
+#[derive(Clone)]
+pub struct SqlxAboutMeRepo {
+    pub pool: PgPool,
 }

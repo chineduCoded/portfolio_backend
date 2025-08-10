@@ -62,9 +62,8 @@ impl JwtService {
 
     pub fn decode_jwt(&self, token: &str) -> Result<TokenData<Claims>, AuthError> {
         let mut validation = Validation::new(JWT_ALGORITHM);
-        validation.validate_exp = true;
-        // validation.set_issuer(&["your-issuer"]);
-        // validation.set_audience(&["your-audience"]);
+        validation.required_spec_claims = ["exp".to_string(), "sub".to_string()].iter().cloned().collect();
+        validation.leeway = 0;
 
         decode::<Claims>(
             token, 

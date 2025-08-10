@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * \n            FROM about_me \n            WHERE effective_date <= CURRENT_DATE \n            ORDER BY effective_date DESC, revision DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "revision",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "content_markdown",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "deleted_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "0d047fd3c45d0c5dad9a184dc14927e94da31c7dab78832d7d2c75b7f01ea713"
+}

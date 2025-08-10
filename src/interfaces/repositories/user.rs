@@ -2,7 +2,11 @@ use async_trait::async_trait;
 use uuid::Uuid;
 use std::borrow::Cow;
 
-use crate::{entities::user::{User, UserInsert}, errors::AppError, repositories::sqlx_repo::SqlxRepo};
+use crate::{
+    entities::user::{User, UserInsert}, 
+    errors::AppError, 
+    repositories::sqlx_repo::SqlxUserRepo,
+};
 
 
 #[async_trait]
@@ -17,8 +21,14 @@ pub trait UserRepository: Send + Sync {
     async fn purge_soft_deleted_users(&self) -> Result<u64, AppError>;
 }
 
+impl SqlxUserRepo {
+    pub fn new(pool: sqlx::PgPool) -> Self {
+        SqlxUserRepo { pool }
+    }
+}
+
 #[async_trait]
-impl UserRepository for SqlxRepo {
+impl UserRepository for SqlxUserRepo {
     async fn check_connection(&self) -> Result<(), AppError> {
         sqlx::query("SELECT 1")
             .execute(&self.pool)

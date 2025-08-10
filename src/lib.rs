@@ -8,21 +8,22 @@ use redis::AsyncCommands;
 mod domain;
 mod interfaces;
 mod infrastructure;
+pub mod api_errors;
 pub mod errors;
 pub mod settings;
 pub mod constants;
 pub mod graceful_shutdown;
 pub mod background_task;
+pub mod shared_repos;
 
 pub use domain::{entities, use_cases};
 pub use interfaces::{handlers, repositories, middlewares, routes};
-pub use infrastructure::{auth, db, web};
+pub use infrastructure::{auth, db, utils};
 
 use auth::jwt::JwtService;
-use repositories::sqlx_repo::SqlxRepo;
 use use_cases::auth::AuthHandler;
 
-use crate::errors::AuthError;
+use crate::{domain::use_cases::about::AboutHandler, errors::AuthError, interfaces::repositories::sqlx_repo::{SqlxAboutMeRepo, SqlxUserRepo}, shared_repos::SharedRepositories};
 
 #[async_trait]
 pub trait RedisService {
@@ -32,13 +33,23 @@ pub trait RedisService {
 
 pub struct AppState {
     pub auth_handler: AppAuthHandler,
+    pub about_handler: AboutHandler<SqlxAboutMeRepo>,
     pub redis_pool: Option<RedisPool>,
 }
 
-pub type AppAuthHandler = AuthHandler<SqlxRepo, JwtService>;
+pub type AppAuthHandler = AuthHandler<SqlxUserRepo, JwtService>;
 
 impl AppState {
-    pub fn new(config: &settings::AppConfig, pool: sqlx::PgPool) -> Self {
+    pub fn new(
+        config: &settings::AppConfig, 
+        pool: sqlx::PgPool
+    ) -> Self {
+        let shared_repos = SharedRepositories::new(pool);
+        let jwt_service = JwtService::new(config);
+
+        let auth_handler = AuthHandler::new(shared_repos.user_repo, jwt_service);
+        let about_handler = AboutHandler::new(shared_repos.about_repo);
+        
         let redis_pool = config.redis_url.as_ref().and_then(|url| {
             let cfg = deadpool_redis::Config::from_url(url);
             cfg.create_pool(Some(Runtime::Tokio1))
@@ -48,13 +59,9 @@ impl AppState {
                 .ok()
         });
 
-        let jwt_service = JwtService::new(config);
-
-        let user_repo = SqlxRepo::new(pool);
-        let auth_handler = AuthHandler::new(user_repo, jwt_service);
-
         AppState { 
             auth_handler,
+            about_handler,
             redis_pool 
         }
     }

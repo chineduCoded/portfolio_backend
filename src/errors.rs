@@ -19,6 +19,7 @@ pub enum AppError {
     UnauthorizedAccess,
     ForbiddenAccess,
     InternalError(String),
+    InvalidInput(String)
 }
 
 impl fmt::Display for AppError {
@@ -31,11 +32,12 @@ impl fmt::Display for AppError {
                     .join(", ");
                 write!(f, "validation error: {}", messages)
             }
-            AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
-            AppError::Conflict(msg) => write!(f, "Conflict: {}", msg),
+            AppError::NotFound(msg) => write!(f, "{}", msg),
+            AppError::Conflict(msg) => write!(f, "{}", msg),
             AppError::UnauthorizedAccess => write!(f, "Unauthorized access"),
             AppError::ForbiddenAccess => write!(f, "Forbidden access"),
-            AppError::InternalError(msg) => write!(f, "Internal server error: {}", msg)
+            AppError::InternalError(msg) => write!(f, "{}", msg),
+            AppError::InvalidInput(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -66,6 +68,7 @@ impl ResponseError for AppError {
             AppError::UnauthorizedAccess => StatusCode::UNAUTHORIZED,
             AppError::ForbiddenAccess => StatusCode::FORBIDDEN,
             AppError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
         }
     }
 }
@@ -146,8 +149,14 @@ pub enum AuthError {
     #[display("Missing credentials")]
     MissingCredentials,
 
+    #[display("Missing Authorization header")]
+    MissingAuthHeader,
+
     #[display("Missing JWT service")]
     MissingJwtService,
+
+    #[display("Missing AppState")]
+    MissingAppState,
 
     #[display("Invalid user ID")]
     InvalidUserId,
@@ -179,33 +188,34 @@ pub enum AuthError {
 
 impl ResponseError for AuthError {
     fn error_response(&self) -> HttpResponse {
-        let error_message = match self {
-            AuthError::PasswordError(msg) => format!("Password error: {}", msg),
-            AuthError::TokenExpired => "Token has expired".to_string(),
-            _ => self.to_string(),
-        };
+        let msg = self.to_string();
         HttpResponse::build(self.status_code())
-            .json(serde_json::json!({"error": error_message}))
+            .json(serde_json::json!({ "error": msg }))
     }
     fn status_code(&self) -> StatusCode {
         match *self {
-            AuthError::InvalidToken => StatusCode::UNAUTHORIZED,
-            AuthError::WrongCredentials => StatusCode::UNAUTHORIZED,
-            AuthError::TokenCreation => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::TokenUserMismatch => StatusCode::BAD_REQUEST,
-            AuthError::TokenExpired => StatusCode::UNAUTHORIZED,
-            AuthError::RevokedToken => StatusCode::UNAUTHORIZED,
-            AuthError::MissingCredentials => StatusCode::BAD_REQUEST,
-            AuthError::MissingJwtService => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::InvalidUserId => StatusCode::BAD_REQUEST,
-            AuthError::PasswordError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::AuthenticationFailed => StatusCode::UNAUTHORIZED,
+            AuthError::InvalidToken
+            | AuthError::TokenExpired
+            | AuthError::RevokedToken
+            | AuthError::WrongCredentials
+            | AuthError::AuthenticationFailed
+            | AuthError::TokenRevoked => StatusCode::UNAUTHORIZED,
+
+            AuthError::MissingCredentials
+            | AuthError::MissingAuthHeader
+            | AuthError::TokenUserMismatch
+            | AuthError::InvalidUserId
+            | AuthError::RedisNotConfigured
+            | AuthError::InvalidTokenType
+            | AuthError::RedisOperation(_) => StatusCode::BAD_REQUEST,
+
             AuthError::Forbidden(_) => StatusCode::FORBIDDEN,
-            AuthError::RedisNotConfigured => StatusCode::BAD_REQUEST,
-            AuthError::TokenRevoked => StatusCode::UNAUTHORIZED,
-            AuthError::InvalidTokenType => StatusCode::BAD_REQUEST,
-            AuthError::RedisConnection(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            AuthError::RedisOperation(_) => StatusCode::BAD_REQUEST,
+
+            AuthError::TokenCreation
+            | AuthError::MissingJwtService
+            | AuthError::MissingAppState
+            | AuthError::PasswordError(_)
+            | AuthError::RedisConnection(_)=> StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

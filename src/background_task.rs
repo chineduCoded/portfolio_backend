@@ -1,8 +1,8 @@
 use tokio::time::{interval, Duration};
 
-use crate::repositories::{sqlx_repo::SqlxRepo, user::UserRepository};
+use crate::repositories::{sqlx_repo::SqlxUserRepo, user::UserRepository};
 
-pub async fn start_purge_task(repo: SqlxRepo) {
+pub async fn start_purge_task(repo: SqlxUserRepo) {
     let mut interval = interval(Duration::from_secs(60 * 60 * 24));
 
     loop {
