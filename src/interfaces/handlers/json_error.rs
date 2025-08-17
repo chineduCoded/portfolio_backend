@@ -47,10 +47,10 @@ pub fn handle_handler_error(e: AppError) -> HttpResponse {
             "Forbidden",
             "Forbidden access"
         ),
-        AppError::InternalError(msg) => json_error(
-            StatusCode::INTERNAL_SERVER_ERROR, 
-            "Internal server error", 
-            &msg
+        AppError::InternalError(_) => json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            "An unexpected error occurred"
         ),
         AppError::ServiceUnavailable(msg) => json_error(
             StatusCode::SERVICE_UNAVAILABLE, 
@@ -75,7 +75,7 @@ pub fn handle_auth_handler_error(e: AuthError) -> HttpResponse {
         AuthError::InvalidToken => return json_error(
             StatusCode::UNAUTHORIZED,
             "Unauthorized",
-            "Maformed or invalid token"
+            "Malformed or invalid token"
         ),
         AuthError::InvalidUserId => return json_error(
             StatusCode::BAD_REQUEST,
