@@ -72,7 +72,11 @@ where
             return Err(AppError::Conflict("Revision mismatch".to_string()));
         }
 
-        let updated = self.about_repo.update_about_me_content(id, &request.content_markdown).await?;
+        let updated = self.about_repo.update_about_me_content(
+            &valid_id, 
+            &request.content_markdown,
+            &request.effective_date
+        ).await?;
 
         Ok(updated.into())
     }

@@ -3,8 +3,7 @@ use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
 use crate::domain::entities::user::LoginUser;
 use crate::entities::token::{AuthResponse, RefreshTokenRequest};
 use crate::entities::user::{LogoutRequest, NewUser};
-use crate::errors::AuthError;
-use crate::handlers::json_error::json_error;
+use crate::handlers::json_error::{handle_auth_handler_error, json_error};
 use crate::use_cases::extractors::AdminClaims;
 use crate::AppState;
 
@@ -26,9 +25,7 @@ pub async fn login(
 ) -> impl Responder {
     match state.auth_handler.login(user.into_inner()).await {
         Ok(auth_response) => HttpResponse::Ok().json(auth_response), 
-        Err(e) => HttpResponse::Unauthorized().json(serde_json::json!({
-            "error": e.to_string()
-        })),
+        Err(e) => handle_auth_handler_error(e),
     }
 }
 
@@ -43,42 +40,7 @@ pub async fn refresh_token(
             refresh_token: auth_response.refresh_token,
             token_type: "Bearer".to_string(),
         }),
-        Err(error) => {
-            match error {
-                AuthError::TokenExpired => return json_error(
-                    StatusCode::UNAUTHORIZED, 
-                    "Token Expired", 
-                    "Refresh token has expired"
-                ),
-                AuthError::InvalidToken => return json_error(
-                    StatusCode::UNAUTHORIZED,
-                    "Invalid Token",
-                    "Maformed or invalid refresh token"
-                ),
-                AuthError::InvalidUserId => return json_error(
-                    StatusCode::BAD_REQUEST,
-                    "Invalide User",
-                    "User ID token is invalid"
-                ),
-                AuthError::WrongCredentials => return json_error(
-                    StatusCode::UNAUTHORIZED,
-                    "Invalid Credentials",
-                    "User wrong credentials"
-                ),
-                AuthError::RevokedToken => return json_error(
-                    StatusCode::UNAUTHORIZED,
-                    "Token Revoked",
-                    "Refresh token has been revoked"
-                ),
-                _ => {
-                    return json_error(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Internal Server Error",
-                        "Something went wrong while refreshing token"
-                    )
-                }
-            }
-        }
+        Err(e) => handle_auth_handler_error(e),
     }
 }
 
@@ -103,20 +65,7 @@ pub async fn logout(
 
     match state.auth_handler.logout(&body.refresh_token, &access_token, &state).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({"message": "Logged out successfully"})),
-        Err(AuthError::InvalidToken) => {
-            return json_error(
-                StatusCode::BAD_REQUEST,
-                "Invalid Token",
-                "Token could not be decoded"
-            )
-        }
-        Err(_) => {
-            return json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Logout Failed",
-                "An unexpected error occurred during logout"
-            )
-        },
+        Err(e) => handle_auth_handler_error(e),
     }
 }
 

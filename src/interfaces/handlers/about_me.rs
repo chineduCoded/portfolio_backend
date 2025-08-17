@@ -11,10 +11,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    entities::about_me::{AboutMeUpload, DeleteAboutMeQuery, NewAboutMe}, 
-    errors::AppError, use_cases::extractors::AdminClaims, 
-    utils::markdown::read_markdown_file, 
-    AppState
+    entities::about_me::{AboutMeUpload, DeleteAboutMeQuery, NewAboutMe}, handlers::json_error::handle_handler_error, use_cases::extractors::AdminClaims, utils::markdown::read_markdown_file, AppState
 };
 
 
@@ -29,7 +26,7 @@ pub async fn create_about_me(
         Ok(either) => either,
         Err(e) => {
             let mut error = serde_json::json!({
-                "error": "Invaid request",
+                "error": "Invalid request",
                 "message": "Error processing input"
             });
 
@@ -100,11 +97,11 @@ pub async fn create_about_me(
                 file_path, 2 * 1024 * 1024
             ).await {
                 Ok(c) => c,
-                Err(e) => {
+                Err(_) => {
                     return HttpResponse::BadRequest().json(
                         serde_json::json!({
                             "error": "Markdown file error", 
-                            "details": format!("{:?}", e)
+                            "details": "Failed to read markdown file"
                         })
                     );
                 }
@@ -147,6 +144,11 @@ pub async fn get_about_me(
     }
 }
 
+// pub async fn update_about_me(
+// ) -> impl Responder {
+//     todo!("Implement update_about_me handler");
+// }
+
 pub async fn delete_about_me(
     _claims: AdminClaims,
     path: web::Path<Uuid>,
@@ -159,29 +161,5 @@ pub async fn delete_about_me(
     match state.about_handler.delete_about_me(id, hard_delete).await {
         Ok(()) => HttpResponse::NoContent().finish(),
         Err(e) => handle_handler_error(e)
-    }
-}
-
-// Helper function to handle AboutHandler errors
-fn handle_handler_error(e: AppError) -> HttpResponse {
-    match e {
-        AppError::Conflict(msg) => HttpResponse::Conflict().json(
-            serde_json::json!({"error": "Conflict", "message": msg})
-        ),
-        AppError::NotFound(msg) => HttpResponse::NotFound().json(
-            serde_json::json!({"error": "Not found", "message": msg})
-        ),
-        AppError::InvalidInput(msg) => HttpResponse::BadRequest().json(
-            serde_json::json!({"error": "Bad request", "message": msg})
-        ),
-        AppError::InternalError(msg) => HttpResponse::InternalServerError().json(
-            serde_json::json!({"error": "Internal server error", "message": msg})
-        ),
-        AppError::ServiceUnavailable(msg) => HttpResponse::ServiceUnavailable().json(
-            serde_json::json!({"error": "Service unavailable", "message": msg})
-        ),
-        _ => HttpResponse::InternalServerError().json(
-            serde_json::json!({"error": "Something went wrong"})
-        ),
     }
 }

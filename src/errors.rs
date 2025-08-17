@@ -118,7 +118,10 @@ impl From<sqlx::Error> for AppError {
             sqlx::Error::PoolTimedOut | sqlx::Error::Io(_) => {
                 AppError::ServiceUnavailable("Database unavailable".into())
             }
-            _ => AppError::InternalError(format!("Database error: {}", err))
+            _ => {
+                tracing::error!(error = %err, "Database error");
+                AppError::InternalError("Internal server error".into())
+            }
         }
     }
 }

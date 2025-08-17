@@ -54,10 +54,20 @@ async fn main() -> std::io::Result<()> {
     .bind(server_addr)?
     .run();
 
-    tokio::spawn(start_purge_task(app_state_clone.auth_handler.user_repo.clone()));
+    // Create a broadcast channel for shutdown signal
+    let (shutdown_sender, shutdown_receiver) = tokio::sync::broadcast::channel(1);
+
+    tokio::spawn(start_purge_task(
+        app_state_clone.auth_handler.user_repo.clone(),
+        shutdown_receiver
+    ));
 
     tokio::select! {
         res = server => res,
-        _ = shutdown_signal() => Ok(()),
+        _ = shutdown_signal() => {
+            // Optionally send shutdown signal to background tasks
+            let _ = shutdown_sender.send(());
+            Ok(())
+        },
     }
 }

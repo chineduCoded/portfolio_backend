@@ -20,7 +20,7 @@ pub trait AboutRepository: Send + Sync {
     async fn get_current_about_me(&self) -> Result<AboutMeResponse, AppError>;
 
     /// Updates the "About Me" content
-    async fn update_about_me_content(&self, id: Uuid, content: &str) -> Result<AboutMe, AppError>;
+    async fn update_about_me_content(&self, id: &Uuid, content: &str, effective_date: &NaiveDate,) -> Result<AboutMe, AppError>;
 
     /// Get the current revision of "About Me" content
     async fn get_current_revision(&self, effective_date: NaiveDate) -> Result<i32, AppError>;
@@ -90,24 +90,31 @@ impl AboutRepository for SqlxAboutMeRepo {
         Ok(about_me.into())
     }
 
-    async fn update_about_me_content(&self, id: Uuid, content: &str) -> Result<AboutMe, AppError> {
+    async fn update_about_me_content(
+        &self, 
+        id: &Uuid, 
+        content: &str,
+        effective_date: &NaiveDate,
+    ) -> Result<AboutMe, AppError> {
         let updated = sqlx::query_as!(
             AboutMe,
             r#"
             UPDATE about_me
             SET
                 content_markdown = $1,
+                effective_date = $2,
                 updated_at = NOW()
-            WHERE id = $2
+            WHERE id = $3
             RETURNING *
             "#,
             content,
+            effective_date,
             id
         )
         .fetch_one(&self.pool)
         .await
         .map_err(|e| match e {
-            sqlx::Error::RowNotFound => AppError::NotFound("AboutMe entry".into()),
+            sqlx::Error::RowNotFound => AppError::NotFound("Record not found".into()),
             _ => e.into()
         });
 
