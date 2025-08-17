@@ -14,7 +14,7 @@ pub trait AboutRepository: Send + Sync {
     async fn create_about_me(&self, about_insert: &AboutMeInsert) -> Result<Uuid, AppError>;
 
     /// Retrieves the "About Me" content by id
-    async fn get_about_me_by_id(&self, id: Uuid) -> Result<AboutMe, AppError>;
+    async fn get_about_me_by_id(&self, id: &Uuid) -> Result<AboutMe, AppError>;
 
     /// Retrieves the current "About Me" content
     async fn get_current_about_me(&self) -> Result<AboutMeResponse, AppError>;
@@ -22,8 +22,8 @@ pub trait AboutRepository: Send + Sync {
     /// Updates the "About Me" content
     async fn update_about_me_content(&self, id: Uuid, content: &str) -> Result<AboutMe, AppError>;
 
-    /// Get the latest revision of "About Me" content
-    async fn get_latest_revision(&self, effective_date: NaiveDate) -> Result<i32, AppError>;
+    /// Get the current revision of "About Me" content
+    async fn get_current_revision(&self, effective_date: NaiveDate) -> Result<i32, AppError>;
 
     /// Soft delete (recommended for most cases)
     async fn soft_delete_about_me(&self, id: Uuid) -> Result<(), AppError>;
@@ -57,10 +57,10 @@ impl AboutRepository for SqlxAboutMeRepo {
         Ok(id)
     }
 
-    async fn get_about_me_by_id(&self, id: Uuid) -> Result<AboutMe, AppError> {
+    async fn get_about_me_by_id(&self, id: &Uuid) -> Result<AboutMe, AppError> {
         let about_me = sqlx::query_as!(
             AboutMe,
-            r#"SELECT * FROM about_me WHERE id = $1"#,
+            r#"SELECT * FROM about_me WHERE id = $1 AND deleted_at IS NULL"#,
             id
         )
         .fetch_one(&self.pool)
@@ -75,12 +75,17 @@ impl AboutRepository for SqlxAboutMeRepo {
             r#"SELECT * 
             FROM about_me 
             WHERE effective_date <= CURRENT_DATE 
+                AND deleted_at IS NULL
             ORDER BY effective_date DESC, revision DESC
             LIMIT 1
             "#
         )
-        .fetch_one(&self.pool)
-        .await?;
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(AppError::from)?;
+
+        let about_me = about_me
+            .ok_or_else(|| AppError::NotFound("Record not found".to_string()))?;
         
         Ok(about_me.into())
     }
@@ -109,19 +114,21 @@ impl AboutRepository for SqlxAboutMeRepo {
         Ok(updated.map_err(|e| AppError::InternalError(e.to_string()))?)
     }
 
-    async fn get_latest_revision(&self, effective_date: NaiveDate) -> Result<i32, AppError> {
+    async fn get_current_revision(&self, effective_date: NaiveDate) -> Result<i32, AppError> {
         let revision = sqlx::query_scalar!(
             r#"
-            SELECT COALESCE(MAX(revision), -1) + 1
+            SELECT MAX(revision)
             FROM about_me
             WHERE effective_date = $1
+            AND deleted_at IS NULL
             "#,
             effective_date
         )
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(AppError::from)?;
 
-        Ok(revision.expect("Failed to fetch latest revision"))
+        Ok(revision.unwrap_or(0))
     }
 
     async fn soft_delete_about_me(&self, id: Uuid) -> Result<(), AppError> {
@@ -137,7 +144,7 @@ impl AboutRepository for SqlxAboutMeRepo {
         .await
         .map(|result| {
             if result.rows_affected() == 0 {
-                Err(AppError::NotFound("AboutMe record".into()))
+                Err(AppError::NotFound("Record not found".into()))
             } else {
                 Ok(())
             }

@@ -74,7 +74,7 @@ where
                 Some(token) => token,
                 None => {
                     tracing::warn!("Missing or malformed Authorization header");
-                    return Ok(req.error_response(AuthError::MissingCredentials));
+                    return Ok(req.error_response(AuthError::MissingAuthHeader));
                 }
             };
 
@@ -123,7 +123,8 @@ fn is_public_route(path: &str, method: &str) -> bool {
         ("/", "GET") |
         ("/api/v1/auth/refresh", "POST") |
         ("/api/v1/auth/login", "POST") |
-        ("/api/v1/auth/register", "POST")
+        ("/api/v1/auth/register", "POST") |
+        ("/api/v1/about-me/introduction", "GET")
     )
 }
 

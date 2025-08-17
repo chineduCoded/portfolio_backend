@@ -19,7 +19,8 @@ pub enum AppError {
     UnauthorizedAccess,
     ForbiddenAccess,
     InternalError(String),
-    InvalidInput(String)
+    InvalidInput(String),
+    ServiceUnavailable(String),
 }
 
 impl fmt::Display for AppError {
@@ -38,6 +39,7 @@ impl fmt::Display for AppError {
             AppError::ForbiddenAccess => write!(f, "Forbidden access"),
             AppError::InternalError(msg) => write!(f, "{}", msg),
             AppError::InvalidInput(msg) => write!(f, "{}", msg),
+            AppError::ServiceUnavailable(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -69,6 +71,7 @@ impl ResponseError for AppError {
             AppError::ForbiddenAccess => StatusCode::FORBIDDEN,
             AppError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+            AppError::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 }
@@ -108,6 +111,12 @@ impl From<sqlx::Error> for AppError {
             }
             sqlx::Error::Database(e) if e.code() == Some(Cow::Borrowed("23503")) => {
                 AppError::Conflict("Foreign key violation".into())
+            }
+            sqlx::Error::RowNotFound => {
+                AppError::NotFound("Record not found".into())
+            }
+            sqlx::Error::PoolTimedOut | sqlx::Error::Io(_) => {
+                AppError::ServiceUnavailable("Database unavailable".into())
             }
             _ => AppError::InternalError(format!("Database error: {}", err))
         }
@@ -149,7 +158,7 @@ pub enum AuthError {
     #[display("Missing credentials")]
     MissingCredentials,
 
-    #[display("Missing Authorization header")]
+    #[display("Missing or malformed Authorization header")]
     MissingAuthHeader,
 
     #[display("Missing JWT service")]

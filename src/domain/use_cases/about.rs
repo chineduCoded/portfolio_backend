@@ -33,15 +33,16 @@ where
 
         let new_about_me = request.prepare_for_insert();
 
-        let revision = self.about_repo.get_latest_revision(new_about_me.effective_date).await?;
-
         let id = self.about_repo.create_about_me(&new_about_me).await?;
+
+        let current_revision = self.about_repo.get_current_revision(new_about_me.effective_date).await?;
 
         Ok(AboutMeCreatedResponse {
             id,
+            revision: current_revision,
             message: format!(
                 "Created 'About Me' content with  revision {} and effective date {}",
-                revision, new_about_me.effective_date
+                current_revision, new_about_me.effective_date
             ),
         })
     }
@@ -65,7 +66,7 @@ where
 
         let valid_id = valid_uuid(&id.to_string())?;
 
-        let current = self.about_repo.get_about_me_by_id(valid_id).await?;
+        let current = self.about_repo.get_about_me_by_id(&valid_id).await?;
 
         if current.revision != request.expected_revision {
             return Err(AppError::Conflict("Revision mismatch".to_string()));

@@ -8,7 +8,7 @@ use portfolio_backend::{
     middlewares::auth::AuthMiddleware, 
     routes::configure_routes, 
     settings::AppConfig, 
-    AppState,
+    AppState
 };
 
 #[actix_web::main]

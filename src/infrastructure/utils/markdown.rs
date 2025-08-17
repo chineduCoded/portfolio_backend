@@ -1,4 +1,5 @@
-use std::{fs, path::Path, io};
+use std::{path::Path, io};
+use tokio::fs;
 
 use pulldown_cmark::{html, Options, Parser};
 use ammonia::clean;
@@ -33,23 +34,27 @@ pub async fn read_markdown_file(
     file_path: &Path,
     max_size: usize
 ) -> Result<String, MarkdownError> {
-    // 1. Check original filename extension (.md)
+    // 1. Extension check - allow common markdown extensions
+    let allowed_exts = ["md", "markdown", "mkd", "mdown"];
     if let Some(name) = original_filename {
-        if !name.to_lowercase().ends_with(".md") {
+        let ext = Path::new(name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase());
+        if ext.as_deref().map_or(true, |e| !allowed_exts.contains(&e)) {
             return Err(MarkdownError::InvalidExtension);
         }
     } else {
         return Err(MarkdownError::InvalidExtension);
     }
 
-    // 2. Check the MIME type
+    // 2. MIME detection (tolerant mode)
     let infer = Infer::new();
     match infer.get_from_path(file_path) {
         Ok(Some(mime)) => {
             // Acceptable MIME types for markdown
             let valid_mime_types = [
                 "text/markdown",
-                "text/plain",
                 "text/x-markdown",
             ];
 
@@ -57,16 +62,15 @@ pub async fn read_markdown_file(
                 return Err(MarkdownError::InvalidType(mime.mime_type().to_string()));
             }
         }
-        Ok(None) => {
-            return Err(MarkdownError::InvalidContent);
-        }
+        Ok(None) => {}
         Err(e) => {
             return Err(MarkdownError::MimeDetectionFailed(e.to_string()));
         }
     }
 
-    // 3. Check file size
+    // 3. File size check
     let metadata = fs::metadata(file_path)
+        .await
         .map_err(|e| MarkdownError::IoError(e))?;
     if metadata.len() > max_size as u64 {
         return Err(MarkdownError::FileTooLarge);
@@ -74,14 +78,10 @@ pub async fn read_markdown_file(
 
     // 4. Read file content
     let content = fs::read_to_string(file_path)
+        .await
         .map_err(|e| MarkdownError::IoError(e))?;
     if content.trim().is_empty() {
         return Err(MarkdownError::EmptyFile);
-    }
-
-    // 5. Validate markdown structure
-    if !is_valid_markdown(&content) {
-        return Err(MarkdownError::InvalidContent);
     }
 
     Ok(content)

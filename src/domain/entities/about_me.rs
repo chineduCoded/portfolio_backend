@@ -60,6 +60,7 @@ impl From<AboutMe> for AboutMeResponse {
 #[derive(Debug, Serialize)]
 pub struct AboutMeCreatedResponse {
     pub id: Uuid,
+    pub revision: i32,
     pub message: String,
 }
 
@@ -95,6 +96,11 @@ pub struct UpdateAboutMeRequest {
     pub content_markdown: String,
     pub effective_date: NaiveDate,
     pub expected_revision: i32,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteAboutMeQuery {
+    pub hard_delete: Option<bool>,
 }
 
 // ───── Helper Functions ─────────────────────────────────────────────
