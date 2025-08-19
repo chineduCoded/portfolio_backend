@@ -2,7 +2,7 @@ use std::{path::Path, io};
 use tokio::fs;
 
 use pulldown_cmark::{html, Options, Parser};
-use ammonia::clean;
+use ammonia::{Builder, UrlRelative};
 use derive_more::Display;
 use infer::{self, Infer};
 use futures::future::join_all;
@@ -15,7 +15,16 @@ pub fn safe_markdown_to_html(markdown: &str) -> String {
     let mut raw_html = String::with_capacity(markdown.len() * 2);
     html::push_html(&mut raw_html, parser);
 
-    clean(&raw_html)
+    sanitize_markdown_content(&raw_html)
+}
+
+/// Sanitizes Markdown content to remove unsafe HTML.
+pub fn sanitize_markdown_content(content: &str) -> String {
+    Builder::default()
+        .link_rel(Some("nofollow noopener noreferrer"))
+        .url_relative(UrlRelative::Deny)
+        .clean(content)
+        .to_string()
 }
 
 /// Checks whether a given Markdown string is structurally valid.
