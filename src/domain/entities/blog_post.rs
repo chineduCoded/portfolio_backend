@@ -63,7 +63,7 @@ pub struct BlogPostInsert {
     #[validate(url)]
     pub cover_image_url: Option<String>,
 
-    #[validate(custom(function = "validate_tags"))]
+    #[validate(custom(function = "validate_tags_json"))]
     pub tags: Option<Json<Vec<String>>>,
 
     #[validate(length(max = MAX_TITLE_LENGTH))]
@@ -113,7 +113,7 @@ pub struct BlogPostDetailResponse {
 pub struct BlogPostCreatedResponse {
     pub id: Uuid,
     pub slug: String,
-    pub preview_url: String, // URL for previewing unpubished posts
+    pub preview_url: String, // URL for previewing unpublished posts
     pub admin_url: String,   // URL for editing
 }
 
@@ -138,13 +138,12 @@ pub struct NewBlogPostRequest {
     )]
     pub excerpt: String,
 
-    #[validate(custom(function = "sanitize_markdown"))]
     pub content_markdown: String,
 
     #[validate(url)]
     pub cover_image_url: Option<String>,
 
-    #[validate(custom(function = "validate_tags"))]
+    #[validate(custom(function = "validate_tags_vec"))]
     pub tags: Option<Vec<String>>,
 
     #[validate(length(max = MAX_TITLE_LENGTH))]
@@ -168,7 +167,7 @@ pub struct UpdateBlogPostRequest {
     pub title: Option<String>,
 
     #[validate(
-        length(min = "MIN_SLUG_LENGTH", max = "MAX_SLUG_LENGTH"),
+        length(min = MIN_SLUG_LENGTH, max = MAX_SLUG_LENGTH),
         custom(function = "validate_slug")
     )]
     pub slug: Option<String>,
@@ -178,13 +177,12 @@ pub struct UpdateBlogPostRequest {
     )]
     pub excerpt: Option<String>,
 
-    #[validate(custom(function = "sanitize_markdown"))]
     pub content_markdown: Option<String>,
 
     #[validate(url)]
     pub cover_image_url: Option<Option<String>>, 
 
-    #[validate(custom(function = "validate_tags"))]
+    #[validate(custom(function = "validate_tags_vec"))]
     pub tags: Option<Option<Vec<String>>>,
 
     #[validate(length(max = MAX_TITLE_LENGTH))]
@@ -221,21 +219,29 @@ fn validate_title(title: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-fn validate_tags(tags: &[String]) -> Result<(), ValidationError> {
-    if tags.len() > MAX_TAGS {
-        return Err(ValidationError::new("Too many tags"));
-    }
+fn validate_tags_slice(tags: &[String]) -> Result<(), ValidationError> {
+     if tags.len() > MAX_TAGS {
+         return Err(ValidationError::new("Too many tags"));
+     }
 
-    for tag in tags {
-        if tag.is_empty() || tag.len() > MAX_TAG_LENGTH {
-            return Err(ValidationError::new("Invalid tag length"));
-        }
-        if !tag.chars().all(|c| c.is_alphanumeric() || c == '-') {
-            return Err(ValidationError::new("Tags must be alphanumeric with hyphens"));
-        }
-    }
+     for tag in tags {
+         if tag.is_empty() || tag.len() > MAX_TAG_LENGTH {
+             return Err(ValidationError::new("Invalid tag length"));
+         }
+         if !tag.chars().all(|c| c.is_alphanumeric() || c == '-') {
+             return Err(ValidationError::new("Tags must be alphanumeric with hyphens"));
+         }
+     }
+      Ok(())
+ }
 
-    Ok(())
+// For use with #[validate(custom)] on Option<Vec<String>>
+fn validate_tags_vec(tags: &Vec<String>) -> Result<(), ValidationError> {
+    validate_tags_slice(tags)
+}
+
+fn validate_tags_json(tags: &Json<Vec<String>>) -> Result<(), ValidationError> {
+    validate_tags_slice(&tags.0)
 }
 
 fn validate_future_datetime(dt: &DateTime<Utc>) -> Result<(), ValidationError> {
@@ -247,15 +253,6 @@ fn validate_future_datetime(dt: &DateTime<Utc>) -> Result<(), ValidationError> {
     Ok(())
 }
 
-fn sanitize_markdown(content: &str) -> Result<(), ValidationError> {
-    let sanitized = sanitize_markdown_content(content);
-
-    if sanitized != content {
-        return Err(ValidationError::new("Markdown contains unsafe HTML"));
-    }
-
-    Ok(())
-}
 
 // ───── Conversion Implementations ───────────────────────────────────
 
@@ -265,11 +262,13 @@ impl TryFrom<NewBlogPostRequest> for BlogPostInsert {
     fn try_from(value: NewBlogPostRequest) -> Result<Self, Self::Error> {
         value.validate()?;
 
-        Ok(Self {
+        let sanitized_content = sanitize_markdown_content(&value.content_markdown);
+
+        let insert = BlogPostInsert {
             title: value.title,
             slug: value.slug,
             excerpt: value.excerpt,
-            content_markdown: value.content_markdown,
+            content_markdown: sanitized_content,
             cover_image_url: value.cover_image_url,
             tags: value.tags.map(Json),
             seo_title: value.seo_title,
@@ -278,7 +277,11 @@ impl TryFrom<NewBlogPostRequest> for BlogPostInsert {
             published_at: value.published_at,
             created_at: Utc::now(),
             updated_at: Utc::now(),
-        })
+        };
+
+        insert.validate()?;
+
+        Ok(insert)
     }
 }
 
