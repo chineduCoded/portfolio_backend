@@ -1,26 +1,48 @@
+use std::borrow::Cow;
 use chrono::{DateTime, Utc};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::{Validate, ValidationError, ValidationErrors};
 use sqlx::types::Json;
 
-use crate::utils::markdown::{safe_markdown_to_html, sanitize_markdown_content};
+use crate::{
+    entities::option_fields::OptionField,
+    utils::markdown::{safe_markdown_to_html, sanitize_markdown_content},
+};
 
 // ───── Constants ──────────────────────────────────────────────────────
-
 const MIN_TITLE_LENGTH: u64 = 3;
 const MAX_TITLE_LENGTH: u64 = 120;
 const MIN_SLUG_LENGTH: u64 = 3;
 const MAX_SLUG_LENGTH: u64 = 80;
 const MIN_EXCERPT_LENGTH: u64 = 10;
 const MAX_EXCERPT_LENGTH: u64 = 300;
-const MAX_TAGS: usize = 10;
-const MAX_TAG_LENGTH: usize = 30;
+const MAX_TAGS: u64 = 10;
+const MAX_TAG_LENGTH: u64 = 30;
+
 
 // ───── Database Models ───────────────────────────────────────────────
 
+
 #[derive(Debug, sqlx::FromRow)]
+pub struct BlogPostRow {
+    pub id: Uuid,
+    pub title: String,
+    pub slug: String,
+    pub excerpt: String,
+    pub content_markdown: String,
+    pub cover_image_url: Option<String>,
+    pub tags: Option<Json<Vec<String>>>,
+    pub seo_title: Option<String>,
+    pub seo_description: Option<String>,
+    pub published: bool,
+    pub published_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct BlogPost {
     pub id: Uuid,
     pub title: String,
@@ -28,10 +50,10 @@ pub struct BlogPost {
     pub excerpt: String,
     pub content_markdown: String,
     pub cover_image_url: Option<String>,
-    pub tags: Option<Json<Vec<String>>>,       
-    pub seo_title: Option<String>,       
-    pub seo_description: Option<String>, 
-    pub published: bool,                 
+    pub tags: Option<Vec<String>>,
+    pub seo_title: Option<String>,
+    pub seo_description: Option<String>,
+    pub published: bool,
     pub published_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
@@ -45,22 +67,20 @@ pub struct BlogPostInsert {
         custom(function = "validate_title")
     )]
     pub title: String,
-    
+
     #[validate(
         length(min = MIN_SLUG_LENGTH, max = MAX_SLUG_LENGTH),
         custom(function = "validate_slug")
     )]
     pub slug: String,
-    
-    #[validate(
-        length(min = MIN_EXCERPT_LENGTH, max = MAX_EXCERPT_LENGTH)
-    )]
+
+    #[validate(length(min = MIN_EXCERPT_LENGTH, max = MAX_EXCERPT_LENGTH))]
     pub excerpt: String,
 
     #[validate(length(min = 1, message = "Content cannot be empty"))]
     pub content_markdown: String,
 
-    #[validate(url)]
+    #[validate(custom(function = "validate_optional_url"))]
     pub cover_image_url: Option<String>,
 
     #[validate(custom(function = "validate_tags_json"))]
@@ -79,7 +99,6 @@ pub struct BlogPostInsert {
 }
 
 // ───── API Response Models ──────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
 pub struct BlogPostListResponse {
     pub id: Uuid,
@@ -113,11 +132,11 @@ pub struct BlogPostDetailResponse {
 pub struct BlogPostCreatedResponse {
     pub id: Uuid,
     pub slug: String,
-    pub preview_url: String, // URL for previewing unpublished posts
-    pub admin_url: String,   // URL for editing
+    pub preview_url: String,
+    pub admin_url: String,
 }
 
-// ───── Input & Validation ───────────────────────────────────────────
+// ───── Input & Validation Requests ──────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct NewBlogPostRequest {
@@ -133,17 +152,15 @@ pub struct NewBlogPostRequest {
     )]
     pub slug: String,
 
-    #[validate(
-        length(min = MIN_EXCERPT_LENGTH, max = MAX_EXCERPT_LENGTH)
-    )]
+    #[validate(length(min = MIN_EXCERPT_LENGTH, max = MAX_EXCERPT_LENGTH))]
     pub excerpt: String,
 
     pub content_markdown: String,
 
-    #[validate(url)]
+    #[validate(custom(function = "validate_optional_url"))]
     pub cover_image_url: Option<String>,
 
-    #[validate(custom(function = "validate_tags_vec"))]
+    #[validate(custom(function = "validate_tags"))]
     pub tags: Option<Vec<String>>,
 
     #[validate(length(max = MAX_TITLE_LENGTH))]
@@ -153,7 +170,7 @@ pub struct NewBlogPostRequest {
     pub seo_description: Option<String>,
 
     pub published: bool,
-    
+
     #[validate(custom(function = "validate_future_datetime"))]
     pub published_at: Option<DateTime<Utc>>,
 }
@@ -161,109 +178,177 @@ pub struct NewBlogPostRequest {
 #[derive(Debug, Deserialize, Validate)]
 pub struct UpdateBlogPostRequest {
     #[validate(
-        length(min = MIN_TITLE_LENGTH, max = MAX_TITLE_LENGTH),
-        custom(function = "validate_title")
+        length(min = "MIN_TITLE_LENGTH", max = "MAX_TITLE_LENGTH"),
+        custom(function = "validate_optional_title")
     )]
-    pub title: Option<String>,
+    pub title: OptionField<String>,
 
     #[validate(
-        length(min = MIN_SLUG_LENGTH, max = MAX_SLUG_LENGTH),
-        custom(function = "validate_slug")
+        length(min = "MIN_SLUG_LENGTH", max = "MAX_SLUG_LENGTH"),
+        custom(function = "validate_optional_slug")
     )]
-    pub slug: Option<String>,
+    pub slug: OptionField<String>,
 
-    #[validate(
-        length(min = "MIN_EXCERPT_LENGTH", max = "MAX_EXCERPT_LENGTH")
-    )]
-    pub excerpt: Option<String>,
+    #[validate(length(min = "MIN_EXCERPT_LENGTH", max = "MAX_EXCERPT_LENGTH"))]
+    pub excerpt: OptionField<String>,
 
-    pub content_markdown: Option<String>,
+    pub content_markdown: OptionField<String>,
 
-    #[validate(url)]
-    pub cover_image_url: Option<Option<String>>, 
+    #[validate(custom(function = "validate_optional_url_field"))]
+    pub cover_image_url: OptionField<String>,
 
-    #[validate(custom(function = "validate_tags_vec"))]
-    pub tags: Option<Option<Vec<String>>>,
+    #[validate(custom(function = "validate_optional_tags"))]
+    pub tags: OptionField<Vec<String>>,
 
     #[validate(length(max = MAX_TITLE_LENGTH))]
-    pub seo_title: Option<Option<String>>,
+    pub seo_title: OptionField<String>,
 
     #[validate(length(max = MAX_EXCERPT_LENGTH))]
-    pub seo_description: Option<Option<String>>,
+    pub seo_description: OptionField<String>,
 
-    pub published: Option<bool>,
-    
-    #[validate(custom(function = "validate_future_datetime"))]
-    pub published_at: Option<Option<DateTime<Utc>>>, 
+    pub published: OptionField<bool>,
+
+    #[validate(custom(function = "validate_optional_future_datetime"))]
+    pub published_at: OptionField<DateTime<Utc>>,
 }
-
 
 // ───── Validation Helpers ───────────────────────────────────────────
+pub fn validate_optional_url(url: &str) -> Result<(), ValidationError> {
+    validate_url(url)
+}
 
-fn validate_slug(slug: &str) -> Result<(), ValidationError> {
-    let re = Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").unwrap();
-    if !re.is_match(slug) {
-        return Err(ValidationError::new(
-            "Slug must be lowercase alphanumeric with hyphens"
-        ));
+pub fn validate_url(url: &str) -> Result<(), ValidationError> {
+    match url::Url::parse(url) {
+        Ok(parsed) => {
+            if parsed.scheme() == "http" || parsed.scheme() == "https" {
+                Ok(())
+            } else {
+                Err(new_validation_error("invalid_url_scheme", "URL must start with http:// or https://"))
+            }
+        }
+        Err(_) => Err(new_validation_error("invalid_url", "Invalid URL format")),
     }
-    Ok(())
 }
 
-fn validate_title(title: &str) -> Result<(), ValidationError> {
-    if title.trim().len() != title.len() {
-        return Err(ValidationError::new(
-            "Title must not have leading/trailing whitespace"
-        ));
-    }
-    Ok(())
-}
 
-fn validate_tags_slice(tags: &[String]) -> Result<(), ValidationError> {
-     if tags.len() > MAX_TAGS {
-         return Err(ValidationError::new("Too many tags"));
-     }
-
-     for tag in tags {
-         if tag.is_empty() || tag.len() > MAX_TAG_LENGTH {
-             return Err(ValidationError::new("Invalid tag length"));
-         }
-         if !tag.chars().all(|c| c.is_alphanumeric() || c == '-') {
-             return Err(ValidationError::new("Tags must be alphanumeric with hyphens"));
-         }
-     }
-      Ok(())
- }
-
-// For use with #[validate(custom)] on Option<Vec<String>>
-fn validate_tags_vec(tags: &Vec<String>) -> Result<(), ValidationError> {
-    validate_tags_slice(tags)
-}
-
-fn validate_tags_json(tags: &Json<Vec<String>>) -> Result<(), ValidationError> {
-    validate_tags_slice(&tags.0)
-}
-
-fn validate_future_datetime(dt: &DateTime<Utc>) -> Result<(), ValidationError> {
+pub fn validate_future_datetime(dt: &DateTime<Utc>) -> Result<(), ValidationError> {
     if *dt < Utc::now() {
-        return Err(ValidationError::new(
-            "Scheduled time must be in the future"
-        ));
+        return Err(new_validation_error("datetime_past", "Scheduled time must be in the future"));
     }
     Ok(())
 }
 
+pub fn validate_slug(slug: &str) -> Result<(), ValidationError> {
+    if slug.is_empty() {
+        return Err(new_validation_error("slug_empty", "Slug cannot be empty"));
+    }
+    if !slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Err(new_validation_error("slug_invalid_chars", "Slug must contain only lowercase letters, digits, or hyphens"));
+    }
+    if slug.starts_with('-') || slug.ends_with('-') {
+        return Err(new_validation_error("slug_edge_hyphen", "Slug must not start or end with a hyphen"));
+    }
+    if slug.contains("--") {
+        return Err(new_validation_error("slug_double_hyphen", "Slug must not contain consecutive hyphens"));
+    }
+    Ok(())
+}
 
-// ───── Conversion Implementations ───────────────────────────────────
+pub fn validate_optional_title(value: &OptionField<String>) -> Result<(), ValidationError> {
+    if let OptionField::SetToValue(title) = value {
+        validate_title(title)?;
+    }
+    Ok(())
+}
+
+pub fn validate_optional_slug(value: &OptionField<String>) -> Result<(), ValidationError> {
+    if let OptionField::SetToValue(slug) = value {
+        validate_slug(slug)?;
+    }
+    Ok(())
+}
+
+pub fn validate_optional_url_field(value: &OptionField<String>) -> Result<(), ValidationError> {
+    if let OptionField::SetToValue(url) = value {
+        validate_url(url)?;
+    }
+    Ok(())
+}
+
+pub fn validate_optional_tags(value: &OptionField<Vec<String>>) -> Result<(), ValidationError> {
+    if let OptionField::SetToValue(tags) = value {
+        validate_tags(tags)?;
+    }
+    Ok(())
+}
+
+pub fn validate_optional_future_datetime(value: &OptionField<DateTime<Utc>>) -> Result<(), ValidationError> {
+    if let OptionField::SetToValue(dt) = value {
+        validate_future_datetime(dt)?;
+    }
+    Ok(())
+}
+
+pub fn validate_tags_json(tags: &Json<Vec<String>>) -> Result<(), ValidationError> {
+    validate_tags(&tags.0)
+}
+
+pub fn validate_tags(tags: &[String]) -> Result<(), ValidationError> {
+    if tags.len() > MAX_TAGS as usize {
+        return Err(new_validation_error("too_many_tags", "Too many tags provided"));
+    }
+    for tag in tags {
+        if tag.is_empty() || tag.len() > MAX_TAG_LENGTH as usize {
+            return Err(new_validation_error("invalid_tag_length", "Tag length must be within allowed range"));
+        }
+        if !tag.chars().all(|c| c.is_alphanumeric() || c == '-') {
+            return Err(new_validation_error("invalid_tag_chars", "Tags must be alphanumeric or hyphens"));
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_title(title: &str) -> Result<(), ValidationError> {
+    if title.trim().len() != title.len() {
+        return Err(new_validation_error("title_whitespace", "Title must not have leading or trailing whitespace"));
+    }
+    Ok(())
+}
+
+fn new_validation_error(code: &'static str, msg: &'static str) -> ValidationError {
+    let mut err = ValidationError::new(code);
+    err.message = Some(Cow::Borrowed(msg));
+    err
+}
+
+// ───── Conversions ──────────────────────────────────────────────────
+impl From<BlogPostRow> for BlogPost {
+    fn from(row: BlogPostRow) -> Self {
+        BlogPost {
+            id: row.id,
+            title: row.title,
+            slug: row.slug,
+            excerpt: row.excerpt,
+            content_markdown: row.content_markdown,
+            cover_image_url: row.cover_image_url,
+            tags: row.tags.map(|t| t.0),
+            seo_title: row.seo_title,
+            seo_description: row.seo_description,
+            published: row.published,
+            published_at: row.published_at,
+            updated_at: row.updated_at,
+            created_at: row.created_at,
+            deleted_at: row.deleted_at,
+        }
+    }
+}
 
 impl TryFrom<NewBlogPostRequest> for BlogPostInsert {
     type Error = ValidationErrors;
 
     fn try_from(value: NewBlogPostRequest) -> Result<Self, Self::Error> {
         value.validate()?;
-
         let sanitized_content = sanitize_markdown_content(&value.content_markdown);
-
         let insert = BlogPostInsert {
             title: value.title,
             slug: value.slug,
@@ -278,9 +363,7 @@ impl TryFrom<NewBlogPostRequest> for BlogPostInsert {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-
         insert.validate()?;
-
         Ok(insert)
     }
 }
@@ -293,7 +376,7 @@ impl BlogPost {
             slug: self.slug.clone(),
             excerpt: self.excerpt.clone(),
             cover_image_url: self.cover_image_url.clone(),
-            tags: self.tags.as_ref().map(|t| t.0.clone()),
+            tags: self.tags.clone(),
             published_at: self.published_at,
             updated_at: self.updated_at,
         }
@@ -307,7 +390,7 @@ impl BlogPost {
             excerpt: self.excerpt.clone(),
             content_html: safe_markdown_to_html(&self.content_markdown),
             cover_image_url: self.cover_image_url.clone(),
-            tags: self.tags.as_ref().map(|t| t.0.clone()),
+            tags: self.tags.clone(),
             seo_title: self.seo_title.clone(),
             seo_description: self.seo_description.clone(),
             published: self.published,
@@ -317,5 +400,3 @@ impl BlogPost {
         }
     }
 }
-
-// ───── Helper Functions ─────────────────────────────────────────────

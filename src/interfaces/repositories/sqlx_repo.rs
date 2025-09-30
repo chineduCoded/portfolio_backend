@@ -9,3 +9,8 @@ pub struct SqlxUserRepo {
 pub struct SqlxAboutMeRepo {
     pub pool: PgPool,
 }
+
+#[derive(Clone)]
+pub struct SqlxBlogPostRepo {
+    pub pool: PgPool,
+}
