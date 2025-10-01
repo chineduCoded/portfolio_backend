@@ -1,5 +1,4 @@
 use crate::{entities::blog_post::{BlogPost, BlogPostCreatedResponse, BlogPostInsert, NewBlogPostRequest, UpdateBlogPostRequest}, errors::AppError, repositories::blog_post::BlogPostRepository, utils::valid_uuid::valid_uuid};
-use uuid::Uuid;
 use validator::Validate;
 
 
@@ -27,8 +26,8 @@ where
         
         let response = BlogPostCreatedResponse {
             id,
-            slug: insert_post.slug,
-            preview_url: format!("/blog/{}", insert_post.slug),
+            slug: insert_post.slug.clone(),
+            preview_url: format!("/blog/{}", insert_post.slug.clone()),
             admin_url: format!("/admin/blog/{}", insert_post.slug),
         };
 
@@ -36,8 +35,8 @@ where
     }
 
     /// Retrieves a blog post by its ID
-    pub async fn get_blog_post_by_id(&self, id: Uuid) -> Result<BlogPost, AppError> {
-       let valid_id = valid_uuid(&id.to_string())?;
+    pub async fn get_blog_post_by_id(&self, id: &str) -> Result<BlogPost, AppError> {
+       let valid_id = valid_uuid(id)?;
         self.blog_post_repo.get_blog_post_by_id(&valid_id).await
     }
 
@@ -49,12 +48,12 @@ where
     /// Updates an existing blog post
     pub async fn update_blog_post(
         &self,
-        id: Uuid,
+        id: &str,
         post: &UpdateBlogPostRequest,
     ) -> Result<BlogPost, AppError> {
         post.validate()?;
 
-        let valid_id = valid_uuid(&id.to_string())?;
+        let valid_id = valid_uuid(id)?;
 
         self.blog_post_repo.update_blog_post(&valid_id, post).await
     }
@@ -62,10 +61,10 @@ where
     /// Deletes a blog post by its ID
     pub async fn delete_blog_post(
         &self, 
-        id: Uuid,
+        id: &str,
         hard_delete: bool
     ) -> Result<(), AppError> {
-        let valid_id = valid_uuid(&id.to_string())?;
+        let valid_id = valid_uuid(id)?;
         
         match hard_delete {
             true => self.blog_post_repo.hard_delete_blog_post(&valid_id).await,

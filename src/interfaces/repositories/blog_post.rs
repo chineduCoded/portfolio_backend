@@ -39,10 +39,6 @@ impl SqlxBlogPostRepo {
 #[async_trait]
 impl BlogPostRepository for SqlxBlogPostRepo {
     async fn create_blog_post(&self, post: &BlogPostInsert) -> Result<Uuid, AppError> {
-        if self.blog_post_exists_with_slug(&post.slug, None).await? {
-            return Err(AppError::Conflict("Slug already exists".into()));
-        }
-
         let id: Uuid = sqlx::query_scalar!(
             r#"
             INSERT INTO blog_posts (
@@ -66,7 +62,15 @@ impl BlogPostRepository for SqlxBlogPostRepo {
             post.updated_at
         )
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.constraint() == Some("blog_posts_slug_key") {
+                    return AppError::Conflict("Slug already exists".into());
+                }
+            }
+            AppError::from(e)
+        })?;
 
         Ok(id)
     }
@@ -102,17 +106,6 @@ impl BlogPostRepository for SqlxBlogPostRepo {
     }
 
     async fn update_blog_post(&self, id: &Uuid, post: &UpdateBlogPostRequest) -> Result<BlogPost, AppError> {
-        if let Some(slug) = &post.slug {
-            if self.blog_post_exists_with_slug(slug, Some(*id)).await? {
-                return Err(AppError::Conflict("Slug already exists".into()));
-            }
-        }
-
-        let cover_image_url = post.cover_image_url.as_str_option();
-        let tags = post.tags.as_slice_option();
-        let seo_title = post.seo_title.as_str_option();
-        let seo_description = post.seo_description.as_str_option();
-        let published_at = post.published_at.as_datetime_option();
 
         // COALESCE used to preserve existing fields when Option::None is provided
         let updated_post = sqlx::query_as!(
@@ -133,20 +126,28 @@ impl BlogPostRepository for SqlxBlogPostRepo {
             WHERE id = $11 AND deleted_at IS NULL
             RETURNING *
             "#,
-            post.title,                                
-            post.slug,                                 
-            post.excerpt,                              
-            post.content_markdown,                     
-            cover_image_url.flatten(),            
-            tags.flatten(),                       
-            seo_title.flatten(),                   
-            seo_description.flatten(),            
-            post.published,                                       
-            published_at.flatten(),                 
+            post.title.flatten_str(),             
+            post.slug.flatten_str(),              
+            post.excerpt.flatten_str(),           
+            post.content_markdown.flatten_str(),  
+            post.cover_image_url.flatten_str(),   
+            post.tags.flatten_slice(),          
+            post.seo_title.flatten_str(),         
+            post.seo_description.flatten_str(),   
+            post.published.flatten_bool(),
+            post.published_at.flatten_datetime(),
             id
         )
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(db_err) = &e {
+                if db_err.constraint() == Some("blog_posts_slug_key") {
+                    return AppError::Conflict("Slug already exists".into());
+                }
+            }
+            AppError::from(e)
+        })?;
 
         Ok(updated_post)
     }

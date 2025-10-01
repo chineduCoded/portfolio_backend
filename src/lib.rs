@@ -23,7 +23,7 @@ pub use infrastructure::{auth, db, utils};
 use auth::jwt::JwtService;
 use use_cases::auth::AuthHandler;
 
-use crate::{domain::use_cases::about::AboutHandler, errors::AuthError, interfaces::repositories::sqlx_repo::{SqlxAboutMeRepo, SqlxUserRepo}, shared_repos::SharedRepositories};
+use crate::{domain::use_cases::{about::AboutHandler, blog::BlogPostHandler}, errors::AuthError, interfaces::repositories::sqlx_repo::{SqlxAboutMeRepo, SqlxBlogPostRepo, SqlxUserRepo}, shared_repos::SharedRepositories};
 
 #[async_trait]
 pub trait RedisService {
@@ -34,6 +34,7 @@ pub trait RedisService {
 pub struct AppState {
     pub auth_handler: AppAuthHandler,
     pub about_handler: AboutHandler<SqlxAboutMeRepo>,
+    pub blog_handler: BlogPostHandler<SqlxBlogPostRepo>,
     pub redis_pool: Option<RedisPool>,
 }
 
@@ -49,6 +50,7 @@ impl AppState {
 
         let auth_handler = AuthHandler::new(shared_repos.user_repo, jwt_service);
         let about_handler = AboutHandler::new(shared_repos.about_repo);
+        let blog_handler = BlogPostHandler::new(shared_repos.blog_post_repo);
         
         let redis_pool = config.redis_url.as_ref().and_then(|url| {
             let cfg = deadpool_redis::Config::from_url(url);
@@ -62,6 +64,7 @@ impl AppState {
         AppState { 
             auth_handler,
             about_handler,
+            blog_handler,
             redis_pool 
         }
     }

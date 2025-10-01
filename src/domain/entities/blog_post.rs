@@ -178,18 +178,18 @@ pub struct NewBlogPostRequest {
 #[derive(Debug, Deserialize, Validate)]
 pub struct UpdateBlogPostRequest {
     #[validate(
-        length(min = "MIN_TITLE_LENGTH", max = "MAX_TITLE_LENGTH"),
+        length(min = MIN_TITLE_LENGTH, max = MAX_TITLE_LENGTH),
         custom(function = "validate_optional_title")
     )]
     pub title: OptionField<String>,
 
     #[validate(
-        length(min = "MIN_SLUG_LENGTH", max = "MAX_SLUG_LENGTH"),
+        length(min = MIN_SLUG_LENGTH, max = MAX_SLUG_LENGTH),
         custom(function = "validate_optional_slug")
     )]
     pub slug: OptionField<String>,
 
-    #[validate(length(min = "MIN_EXCERPT_LENGTH", max = "MAX_EXCERPT_LENGTH"))]
+    #[validate(length(min = MIN_EXCERPT_LENGTH, max = MAX_EXCERPT_LENGTH))]
     pub excerpt: OptionField<String>,
 
     pub content_markdown: OptionField<String>,

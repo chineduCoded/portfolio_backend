@@ -10,7 +10,6 @@ use validator::{Validate, ValidateLength, ValidationErrors};
 /// - `SetToNull` → explicitly null
 /// - `SetToValue` → set to provided value
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
 pub enum OptionField<T> {
     Unchanged,
     SetToNull,
@@ -147,25 +146,47 @@ impl<T> OptionField<T> {
             None
         }
     }
+
+    /// Convert into `Option<T>` (what SQLx expects)
+    pub fn flatten(self) -> Option<T> {
+        match self {
+            OptionField::SetToValue(v) => Some(v),
+            _ => None
+        }
+    }
+
+    /// Borrowed flatten for references
+    pub fn flatten_ref(&self) -> Option<&T> {
+        match self {
+            OptionField::SetToValue(v) => Some(v),
+            _ => None
+        }
+    }
 }
 
 // ---------------------- Type-specific convenience ----------------------
 
 impl OptionField<String> {
-    pub fn as_str_option(&self) -> Option<Option<&str>> {
-        self.as_ref_option().map(|opt| opt.map(|s| s.as_str()))
+    pub fn flatten_str(&self) -> Option<&str> {
+        self.flatten_ref().map(|s| s.as_str())
     }
 }
 
 impl<T> OptionField<Vec<T>> {
-    pub fn as_slice_option(&self) -> Option<Option<&[T]>> {
-        self.as_ref_option().map(|opt| opt.map(|v| v.as_slice()))
+    pub fn flatten_slice(&self) -> Option<&[T]> {
+        self.flatten_ref().map(|v| v.as_slice())
+    }
+}
+
+impl OptionField<bool> {
+    pub fn flatten_bool(&self) -> Option<bool> {
+        self.flatten_ref().copied()
     }
 }
 
 impl OptionField<DateTime<Utc>> {
-    pub fn as_datetime_option(&self) -> Option<Option<&DateTime<Utc>>> {
-        self.as_ref_option()
+    pub fn flatten_datetime(&self) -> Option<&DateTime<Utc>> {
+        self.flatten_ref()
     }
 }
 
