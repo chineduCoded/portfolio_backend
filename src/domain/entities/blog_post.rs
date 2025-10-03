@@ -32,7 +32,7 @@ pub struct BlogPostRow {
     pub excerpt: String,
     pub content_markdown: String,
     pub cover_image_url: Option<String>,
-    pub tags: Option<Json<Vec<String>>>,
+    pub tags: Option<Vec<String>>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
     pub published: bool,
@@ -83,8 +83,8 @@ pub struct BlogPostInsert {
     #[validate(custom(function = "validate_optional_url"))]
     pub cover_image_url: Option<String>,
 
-    #[validate(custom(function = "validate_tags_json"))]
-    pub tags: Option<Json<Vec<String>>>,
+    #[validate(custom(function = "validate_tags"))]
+    pub tags: Option<Vec<String>>,
 
     #[validate(length(max = MAX_TITLE_LENGTH))]
     pub seo_title: Option<String>,
@@ -150,7 +150,7 @@ pub struct NewBlogPostRequest {
         length(min = MIN_SLUG_LENGTH, max = MAX_SLUG_LENGTH),
         custom(function = "validate_slug")
     )]
-    pub slug: String,
+    pub slug: Option<String>,
 
     #[validate(length(min = MIN_EXCERPT_LENGTH, max = MAX_EXCERPT_LENGTH))]
     pub excerpt: String,
@@ -263,7 +263,9 @@ pub fn validate_optional_title(value: &OptionField<String>) -> Result<(), Valida
 
 pub fn validate_optional_slug(value: &OptionField<String>) -> Result<(), ValidationError> {
     if let OptionField::SetToValue(slug) = value {
-        validate_slug(slug)?;
+        if !slug.is_empty() {
+            validate_slug(slug)?;
+        }
     }
     Ok(())
 }
@@ -331,7 +333,7 @@ impl From<BlogPostRow> for BlogPost {
             excerpt: row.excerpt,
             content_markdown: row.content_markdown,
             cover_image_url: row.cover_image_url,
-            tags: row.tags.map(|t| t.0),
+            tags: row.tags,
             seo_title: row.seo_title,
             seo_description: row.seo_description,
             published: row.published,
@@ -349,13 +351,20 @@ impl TryFrom<NewBlogPostRequest> for BlogPostInsert {
     fn try_from(value: NewBlogPostRequest) -> Result<Self, Self::Error> {
         value.validate()?;
         let sanitized_content = sanitize_markdown_content(&value.content_markdown);
+
+        // Generate slug if not provided
+        let slug = match value.slug {
+            Some(s) => s,
+            _ => slug::slugify(&value.title)
+        };
+
         let insert = BlogPostInsert {
             title: value.title,
-            slug: value.slug,
+            slug,
             excerpt: value.excerpt,
             content_markdown: sanitized_content,
             cover_image_url: value.cover_image_url,
-            tags: value.tags.map(Json),
+            tags: value.tags,
             seo_title: value.seo_title,
             seo_description: value.seo_description,
             published: value.published,
@@ -363,6 +372,7 @@ impl TryFrom<NewBlogPostRequest> for BlogPostInsert {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
+
         insert.validate()?;
         Ok(insert)
     }

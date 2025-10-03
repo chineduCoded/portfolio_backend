@@ -27,22 +27,27 @@ where
         let response = BlogPostCreatedResponse {
             id,
             slug: insert_post.slug.clone(),
-            preview_url: format!("/blog/{}", insert_post.slug.clone()),
-            admin_url: format!("/admin/blog/{}", insert_post.slug),
+            preview_url: format!("/blog/posts/{}", insert_post.slug.clone()),
+            admin_url: format!("/admin/blog/posts{}", insert_post.slug),
         };
 
         Ok(response)
     }
 
     /// Retrieves a blog post by its ID
-    pub async fn get_blog_post_by_id(&self, id: &str) -> Result<BlogPost, AppError> {
-       let valid_id = valid_uuid(id)?;
+    pub async fn get_blog_post_by_id(&self, post_id: &str) -> Result<BlogPost, AppError> {
+       let valid_id = valid_uuid(post_id)?;
         self.blog_post_repo.get_blog_post_by_id(&valid_id).await
     }
 
     /// Retrieves all blog posts
     pub async fn get_all_blog_posts(&self, published_only: bool, page: u32, per_page: u32) -> Result<Vec<BlogPost>, AppError> {
         self.blog_post_repo.get_all_blog_posts(published_only, page, per_page).await
+    }
+
+    /// Retrieves recent blog posts limited by the specified number
+    pub async fn get_recent_blog_posts(&self, limit: u32) -> Result<Vec<BlogPost>, AppError> {
+        self.blog_post_repo.get_recent_blog_posts(limit).await
     }
 
     /// Updates an existing blog post
@@ -56,6 +61,15 @@ where
         let valid_id = valid_uuid(id)?;
 
         self.blog_post_repo.update_blog_post(&valid_id, post).await
+    }
+
+    /// Publishes a blog post by its ID
+    pub async fn publish_blog_post(
+        &self, 
+        id: &str
+    ) -> Result<BlogPost, AppError> {
+        let valid_id = valid_uuid(id)?;
+        self.blog_post_repo.publish_blog_post(&valid_id).await
     }
 
     /// Deletes a blog post by its ID

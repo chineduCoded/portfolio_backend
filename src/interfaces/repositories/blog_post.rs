@@ -3,7 +3,7 @@ use uuid::Uuid;
 use sqlx::{self, PgPool, QueryBuilder};
 
 use crate::{
-    entities::blog_post::{BlogPost, BlogPostInsert, UpdateBlogPostRequest},
+    entities::{blog_post::{BlogPost, BlogPostInsert, UpdateBlogPostRequest}, option_fields::OptionField},
     errors::AppError,
     repositories::sqlx_repo::SqlxBlogPostRepo,
 };
@@ -21,6 +21,7 @@ pub trait BlogPostRepository: Sync + Send {
     async fn get_blog_post_by_slug(&self, slug: &str) -> Result<BlogPost, AppError>;
     async fn update_blog_post(&self, id: &Uuid, post: &UpdateBlogPostRequest) -> Result<BlogPost, AppError>;
     async fn get_all_blog_posts(&self, published_only: bool, page: u32, per_page: u32) -> Result<Vec<BlogPost>, AppError>;
+    async fn publish_blog_post(&self, id: &Uuid) -> Result<BlogPost, AppError>;
     async fn count_blog_posts(&self, published_only: bool) -> Result<i64, AppError>;
     async fn get_recent_blog_posts(&self, limit: u32) -> Result<Vec<BlogPost>, AppError>;
     async fn search_blog_posts(&self, query: &str) -> Result<Vec<BlogPost>, AppError>;
@@ -106,6 +107,9 @@ impl BlogPostRepository for SqlxBlogPostRepo {
     }
 
     async fn update_blog_post(&self, id: &Uuid, post: &UpdateBlogPostRequest) -> Result<BlogPost, AppError> {
+        let current = self.get_blog_post_by_id(id).await?;
+
+        let resolved_slug = resolve_slug_for_update(&post.slug, &post.title, &current.slug);
 
         // COALESCE used to preserve existing fields when Option::None is provided
         let updated_post = sqlx::query_as!(
@@ -113,7 +117,7 @@ impl BlogPostRepository for SqlxBlogPostRepo {
             r#"
             UPDATE blog_posts SET
                 title = COALESCE($1, title),
-                slug = COALESCE($2, slug),
+                slug = $2, -- Always set to resolved slug
                 excerpt = COALESCE($3, excerpt),
                 content_markdown = COALESCE($4, content_markdown),
                 cover_image_url = COALESCE($5, cover_image_url),
@@ -127,7 +131,7 @@ impl BlogPostRepository for SqlxBlogPostRepo {
             RETURNING *
             "#,
             post.title.flatten_str(),             
-            post.slug.flatten_str(),              
+            resolved_slug,              
             post.excerpt.flatten_str(),           
             post.content_markdown.flatten_str(),  
             post.cover_image_url.flatten_str(),   
@@ -142,7 +146,7 @@ impl BlogPostRepository for SqlxBlogPostRepo {
         .await
         .map_err(|e| {
             if let sqlx::Error::Database(db_err) = &e {
-                if db_err.constraint() == Some("blog_posts_slug_key") {
+                if db_err.constraint() == Some("blog_posts_slug_active_idx") {
                     return AppError::Conflict("Slug already exists".into());
                 }
             }
@@ -150,6 +154,25 @@ impl BlogPostRepository for SqlxBlogPostRepo {
         })?;
 
         Ok(updated_post)
+    }
+
+    async fn publish_blog_post(&self, id: &Uuid) -> Result<BlogPost, AppError> {
+        let published_post = sqlx::query_as!(
+            BlogPost,
+            r#"
+            UPDATE blog_posts SET
+                published = TRUE,
+                published_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING *
+            "#,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(published_post)
     }
 
     async fn get_all_blog_posts(&self, published_only: bool, page: u32, per_page: u32) -> Result<Vec<BlogPost>, AppError> {
@@ -298,5 +321,28 @@ impl BlogPostRepository for SqlxBlogPostRepo {
         }
 
         Ok(())
+    }
+}
+
+fn resolve_slug_for_update(
+    slug_field: &OptionField<String>,
+    title_field: &OptionField<String>,
+    current_slug: &str,
+) -> String {
+    match slug_field {
+        // User gave a new slug (non-empty string)
+        OptionField::SetToValue(s) if !s.trim().is_empty() => s.clone(),
+
+        // User explicitly gave empty string → regen from new title if provided
+        OptionField::SetToValue(_) => {
+            if let OptionField::SetToValue(new_title) = title_field {
+                slug::slugify(new_title)
+            } else {
+                current_slug.to_string()
+            }
+        }
+
+        // No slug field sent → keep current slug
+        _ => current_slug.to_string(),
     }
 }

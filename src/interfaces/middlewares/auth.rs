@@ -124,7 +124,11 @@ fn is_public_route(path: &str, method: &str) -> bool {
         ("/api/v1/auth/refresh", "POST") |
         ("/api/v1/auth/login", "POST") |
         ("/api/v1/auth/register", "POST") |
-        ("/api/v1/about-me/introduction", "GET")
+        ("/api/v1/about-me/introduction", "GET") |
+        ("/api/v1/blog/posts", "GET") |
+        ("/api/v1/blog/posts/recent/{limit}", "GET") |
+        ("/api/v1/blog/posts/{post_id}", "GET") |
+        ("/api/v1/tags", "GET")
     )
 }
 

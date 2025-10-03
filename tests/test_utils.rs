@@ -8,10 +8,10 @@ use portfolio_backend::{
     db::postgres::create_pool, 
     entities::{token::AuthResponse, user::User}, 
     errors::AppError, middlewares::auth::AuthMiddleware, 
-    repositories::sqlx_repo::{SqlxAboutMeRepo, SqlxUserRepo}, 
+    repositories::sqlx_repo::{SqlxAboutMeRepo, SqlxBlogPostRepo, SqlxUserRepo}, 
     routes::configure_routes, 
     settings::{AppConfig, AppEnvironment}, 
-    use_cases::{about::AboutHandler, auth::AuthHandler}, AppState
+    use_cases::{about::AboutHandler, auth::AuthHandler, blog::BlogPostHandler}, AppState
 };
 use redis::AsyncCommands;
 use reqwest::Client;
@@ -78,6 +78,7 @@ impl TestApp {
                 JwtService::new(&config)
             ),
             about_handler: AboutHandler::new(SqlxAboutMeRepo::new(db_pool.clone())),
+            blog_handler: BlogPostHandler::new(SqlxBlogPostRepo::new(db_pool.clone())),
             redis_pool,
         });
 
