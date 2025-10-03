@@ -28,7 +28,10 @@ pub async fn get_all_blog_posts(
 
     let published_only = query.get("published_only").map_or(false, |v| v == "true");
     let page = query.get("page").and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
-    let per_page = query.get("per_page").and_then(|v| v.parse::<u32>().ok()).unwrap_or(10);
+    let per_page = query.get("per_page")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(10)
+        .min(100);
 
     match blog_post_handler.get_all_blog_posts(published_only, page, per_page).await {
         Ok(posts) => HttpResponse::Ok().json(posts),
@@ -45,7 +48,10 @@ pub async fn get_recent_blog_posts(
 ) -> impl Responder {
     let blog_post_handler = &state.blog_handler;
 
-    let limit = query.get("limit").and_then(|v| v.parse::<u32>().ok()).unwrap_or(5);
+    let limit = query.get("limit")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(5)
+        .min(50);
 
     match blog_post_handler.get_recent_blog_posts(limit).await {
         Ok(posts) => HttpResponse::Ok().json(posts),

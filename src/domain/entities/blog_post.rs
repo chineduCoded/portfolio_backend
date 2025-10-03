@@ -263,9 +263,7 @@ pub fn validate_optional_title(value: &OptionField<String>) -> Result<(), Valida
 
 pub fn validate_optional_slug(value: &OptionField<String>) -> Result<(), ValidationError> {
     if let OptionField::SetToValue(slug) = value {
-        if !slug.is_empty() {
-            validate_slug(slug)?;
-        }
+        validate_slug(slug)?;
     }
     Ok(())
 }
@@ -355,7 +353,17 @@ impl TryFrom<NewBlogPostRequest> for BlogPostInsert {
         // Generate slug if not provided
         let slug = match value.slug {
             Some(s) => s,
-            _ => slug::slugify(&value.title)
+            None => {
+                let generated = slug::slugify(&value.title);
+                if generated.len() < MIN_SLUG_LENGTH as usize {
+                    return Err({
+                        let mut errors = ValidationErrors::new();
+                        errors.add("slug", new_validation_error("slug_too_short", "Generated slug is too short; please provide a custom slug"));
+                        errors
+                    });
+                }
+                generated
+            }
         };
 
         let insert = BlogPostInsert {

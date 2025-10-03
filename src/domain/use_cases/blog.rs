@@ -28,7 +28,7 @@ where
             id,
             slug: insert_post.slug.clone(),
             preview_url: format!("/blog/posts/{}", insert_post.slug.clone()),
-            admin_url: format!("/admin/blog/posts{}", insert_post.slug),
+            admin_url: format!("/admin/blog/posts/{}", insert_post.slug),
         };
 
         Ok(response)

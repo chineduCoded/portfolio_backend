@@ -118,18 +118,22 @@ fn is_public_route(path: &str, method: &str) -> bool {
         return true;
     }
     
-    matches!(
-        (path, method),
-        ("/", "GET") |
-        ("/api/v1/auth/refresh", "POST") |
-        ("/api/v1/auth/login", "POST") |
-        ("/api/v1/auth/register", "POST") |
-        ("/api/v1/about-me/introduction", "GET") |
-        ("/api/v1/blog/posts", "GET") |
-        ("/api/v1/blog/posts/recent/{limit}", "GET") |
-        ("/api/v1/blog/posts/{post_id}", "GET") |
-        ("/api/v1/tags", "GET")
-    )
+    match method {
+        "GET" => {
+            path == "/" ||
+            path == "/api/v1/about-me/introduction" ||
+            path == "/api/v1/blog/posts" ||
+            path.starts_with("/api/v1/blog/posts/recent/") ||
+            path.starts_with("/api/v1/blog/posts/") && path != "/api/v1/blog/posts" ||
+            path == "/api/v1/tags"
+        }
+        "POST" => {
+            path == "/api/v1/auth/refresh" ||
+            path == "/api/v1/auth/login" ||
+            path == "/api/v1/auth/register"
+        }
+        _ => false
+    }
 }
 
 pub fn is_authorized(path: &str, claims: &Claims) -> bool {
