@@ -127,8 +127,7 @@ fn is_public_route(path: &str, method: &str) -> bool {
         ("/api/v1/auth/register", "POST"),
         ("/api/v1/about-me/introduction", "GET"),
         ("/api/v1/blog/posts", "GET"),
-        ("/api/v1/blog/posts/recent/", "GET"),
-        ("/api/v1/blog/posts/", "GET"),
+        ("/api/v1/blog/posts/recent", "GET"),
         ("/api/v1/tags", "GET")
     ];
 
@@ -139,7 +138,10 @@ fn is_public_route(path: &str, method: &str) -> bool {
         return true;
     }
     
-    if method == "GET" && path.starts_with("/api/v1/blog/posts/") {
+    if method == "GET" 
+        && (path == "/api/v1/blog/posts" ||
+            path.starts_with("/api/v1/blog/posts/")) 
+    {
         return true;
     }
 
