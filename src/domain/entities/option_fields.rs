@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{de::{Error, MapAccess, Visitor}, Deserialize, Deserializer, Serialize};
 use validator::{Validate, ValidateLength, ValidationErrors};
 
 /// Represents optional field semantics in PATCH/UPDATE requests.
@@ -9,7 +9,8 @@ use validator::{Validate, ValidateLength, ValidationErrors};
 /// - `Unchanged` → field not touched
 /// - `SetToNull` → explicitly null
 /// - `SetToValue` → set to provided value
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum OptionField<T> {
     Unchanged,
     SetToNull,
@@ -20,6 +21,69 @@ impl<T> Default for OptionField<T> {
     fn default() -> Self {
         OptionField::Unchanged
     }
+}
+
+impl<'de, T> Deserialize<'de> for OptionField<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct OptionFieldVisitor<T>(std::marker::PhantomData<T>);
+        
+        impl<'de, T> Visitor<'de> for OptionFieldVisitor<T>
+        where
+            T: Deserialize<'de>,
+        {
+            type Value = OptionField<T>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("Unchanged, SetToNull, {SetToValue: ...}, or plain value")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error, 
+            {
+                match v {
+                    "Unchanged" => Ok(OptionField::Unchanged),
+                    "SetToNull" => Ok(OptionField::SetToNull),
+                    _ => {
+                        let value = T::deserialize(serde::de::value::StrDeserializer::new(v))?; 
+                        Ok(OptionField::SetToValue(value))
+                    }
+                }
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>, 
+            {
+                if let Some((key, value)) = map.next_entry::<String, T>()? {
+                    match key.as_str() {
+                        "SetToValue" => Ok(OptionField::SetToValue(value)),
+                        "SetToNull" => Ok(OptionField::SetToNull),
+                        "Unchanged" => Ok(OptionField::Unchanged),
+                        _ => Err(Error::unknown_field(&key, &["SetToValue", "SetToNull", "Unchanged"])),
+                    }
+                } else {
+                    Ok(OptionField::Unchanged)
+                }
+            }
+
+            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = T::deserialize(deserializer)?;
+                Ok(OptionField::SetToValue(value))
+            }
+        }
+
+        deserializer.deserialize_any(OptionFieldVisitor(std::marker::PhantomData))
+    }   
 }
 
 // ---------------------- Validation support ----------------------

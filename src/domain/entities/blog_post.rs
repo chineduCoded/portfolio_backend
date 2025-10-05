@@ -175,8 +175,9 @@ pub struct NewBlogPostRequest {
     pub published_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize, Validate)]
-pub struct UpdateBlogPostRequest {
+#[derive(Debug, Deserialize, Validate, Default)]
+#[serde(default)]
+pub struct UpdateBlogPostRequest {    
     #[validate(
         length(min = MIN_TITLE_LENGTH, max = MAX_TITLE_LENGTH),
         custom(function = "validate_optional_title")

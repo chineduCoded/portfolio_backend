@@ -335,7 +335,7 @@ fn resolve_slug_for_update(
     current_slug: &str,
 ) -> String {
     match slug_field {
-        // User gave a new slug (non-empty string)
+        // User explicitly provided a new non-empty slug → use it
         OptionField::SetToValue(s) if !s.trim().is_empty() => s.clone(),
 
         // User explicitly gave empty string → regen from new title if provided
@@ -347,7 +347,13 @@ fn resolve_slug_for_update(
             }
         }
 
-        // No slug field sent → keep current slug
-        _ => current_slug.to_string(),
+        // No slug provided → check if title changed, regenerate from new title
+        OptionField::Unchanged | OptionField::SetToNull => {
+            if let OptionField::SetToValue(new_title) = title_field {
+                slug::slugify(new_title)
+            } else {
+                current_slug.to_string()
+            }
+        }
     }
 }

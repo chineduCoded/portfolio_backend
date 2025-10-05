@@ -18,13 +18,10 @@ pub async fn create_blog_post(
 }
 
 pub async fn get_all_blog_posts(
-    admin_claims: Option<AdminClaims>,
     state: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl Responder, AppError> {
     let blog_post_handler = &state.blog_handler;
-
-    let published_only = admin_claims.is_none();
 
     let page = query.get("page").and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
     let per_page = query.get("per_page")
@@ -33,14 +30,13 @@ pub async fn get_all_blog_posts(
         .min(100);
 
     let posts = blog_post_handler
-        .get_all_blog_posts(published_only, page, per_page)
+        .get_all_blog_posts(true, page, per_page)
         .await?;
 
     Ok(HttpResponse::Ok().json(posts))
 }
 
 pub async fn get_recent_blog_posts(
-    admin_claims: Option<AdminClaims>,
     state: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl Responder, AppError> {
@@ -51,9 +47,8 @@ pub async fn get_recent_blog_posts(
         .unwrap_or(5)
         .min(50);
 
-    let published_only = admin_claims.is_none();
 
-    let posts = blog_post_handler.get_recent_blog_posts(limit, published_only).await?;
+    let posts = blog_post_handler.get_recent_blog_posts(limit, true).await?;
 
     Ok(HttpResponse::Ok().json(posts))
 }
@@ -100,4 +95,42 @@ pub async fn delete_blog_post(
     let hard_delete = query.get("hard_delete").map_or(false, |v| v == "true");
     blog_post_handler.delete_blog_post(&post_id, hard_delete).await?;
     Ok(HttpResponse::NoContent().finish())
+}
+
+// Additional handlers for the admin interface can be added here
+// such as listing all posts including unpublished ones, etc.
+pub async fn admin_get_all_blog_posts(
+    _claims: AdminClaims,
+    state: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<impl Responder, AppError> {
+    let blog_post_handler = &state.blog_handler;
+
+    let page = query.get("page").and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
+    let per_page = query.get("per_page")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(10)
+        .min(100);
+
+    let posts = blog_post_handler
+        .get_all_blog_posts(false, page, per_page)
+        .await?;
+
+    Ok(HttpResponse::Ok().json(posts))
+}
+
+pub async fn admin_get_recent_blog_posts(
+    _claims: AdminClaims,
+    state: web::Data<AppState>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<impl Responder, AppError> {
+    let blog_post_handler = &state.blog_handler;
+
+    let limit = query.get("limit")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(5)
+        .min(50);
+    
+    let posts = blog_post_handler.get_recent_blog_posts(limit, false).await?;
+    Ok(HttpResponse::Ok().json(posts))
 }
