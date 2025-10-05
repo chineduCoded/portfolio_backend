@@ -18,12 +18,14 @@ pub async fn create_blog_post(
 }
 
 pub async fn get_all_blog_posts(
+    admin_claims: Option<AdminClaims>,
     state: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl Responder, AppError> {
     let blog_post_handler = &state.blog_handler;
 
-    let published_only = query.get("published_only").map_or(false, |v| v == "true");
+    let published_only = admin_claims.is_none();
+
     let page = query.get("page").and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
     let per_page = query.get("per_page")
         .and_then(|v| v.parse::<u32>().ok())
@@ -38,6 +40,7 @@ pub async fn get_all_blog_posts(
 }
 
 pub async fn get_recent_blog_posts(
+    admin_claims: Option<AdminClaims>,
     state: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl Responder, AppError> {
@@ -48,7 +51,9 @@ pub async fn get_recent_blog_posts(
         .unwrap_or(5)
         .min(50);
 
-    let posts = blog_post_handler.get_recent_blog_posts(limit).await?;
+    let published_only = admin_claims.is_none();
+
+    let posts = blog_post_handler.get_recent_blog_posts(limit, published_only).await?;
 
     Ok(HttpResponse::Ok().json(posts))
 }

@@ -46,8 +46,12 @@ where
     }
 
     /// Retrieves recent blog posts limited by the specified number
-    pub async fn get_recent_blog_posts(&self, limit: u32) -> Result<Vec<BlogPost>, AppError> {
-        self.blog_post_repo.get_recent_blog_posts(limit).await
+    pub async fn get_recent_blog_posts(
+        &self,
+        limit: u32,
+        published_only: bool,
+    ) -> Result<Vec<BlogPost>, AppError> {
+        self.blog_post_repo.get_recent_blog_posts(limit, published_only).await
     }
 
     /// Updates an existing blog post

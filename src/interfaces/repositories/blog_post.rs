@@ -23,7 +23,7 @@ pub trait BlogPostRepository: Sync + Send {
     async fn get_all_blog_posts(&self, published_only: bool, page: u32, per_page: u32) -> Result<Vec<BlogPost>, AppError>;
     async fn publish_blog_post(&self, id: &Uuid) -> Result<BlogPost, AppError>;
     async fn count_blog_posts(&self, published_only: bool) -> Result<i64, AppError>;
-    async fn get_recent_blog_posts(&self, limit: u32) -> Result<Vec<BlogPost>, AppError>;
+    async fn get_recent_blog_posts(&self, limit: u32, published_only: bool) -> Result<Vec<BlogPost>, AppError>;
     async fn search_blog_posts(&self, query: &str) -> Result<Vec<BlogPost>, AppError>;
     async fn get_blog_posts_by_tag(&self, tag: &str) -> Result<Vec<BlogPost>, AppError>;
     async fn blog_post_exists_with_slug(&self, slug: &str, exclude_id: Option<Uuid>) -> Result<bool, AppError>;
@@ -217,19 +217,24 @@ impl BlogPostRepository for SqlxBlogPostRepo {
         Ok(count)
     }
 
-    async fn get_recent_blog_posts(&self, limit: u32) -> Result<Vec<BlogPost>, AppError> {
-        let posts = sqlx::query_as!(
-            BlogPost,
-            r#"
-            SELECT * FROM blog_posts
-            WHERE deleted_at IS NULL
-            ORDER BY created_at DESC
-            LIMIT $1
-            "#,
-            limit as i64
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    async fn get_recent_blog_posts(
+        &self, 
+        limit: u32,
+        published_only: bool
+    ) -> Result<Vec<BlogPost>, AppError> {
+        let mut builder = QueryBuilder::new(
+            "SELECT * FROM blog_posts WHERE deleted_at IS NULL"
+        );
+
+        if published_only {
+            builder.push(" AND published = TRUE");
+        }
+
+        builder.push(" ORDER BY published_at DESC NULLS LAST LIMIT ");
+        builder.push_bind(limit as i64);
+
+        let query = builder.build_query_as::<BlogPost>();
+        let posts: Vec<BlogPost> = query.fetch_all(&self.pool).await?;
 
         Ok(posts)
     }
