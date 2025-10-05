@@ -10,7 +10,6 @@ use validator::{Validate, ValidateLength, ValidationErrors};
 /// - `SetToNull` → explicitly null
 /// - `SetToValue` → set to provided value
 #[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
 pub enum OptionField<T> {
     Unchanged,
     SetToNull,
