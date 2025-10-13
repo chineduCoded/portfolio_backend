@@ -1,17 +1,29 @@
-use chrono::{DateTime, Utc, NaiveDate};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use validator::Validate;
 
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
-pub struct ContactMessage {
-  pub id: Uuid,
-  pub name: String,
-  pub email: String,
-  pub message: String,
-  pub ip_address: Option<std::net::Ipv4Addr>,
-  pub user_agent: Option<String>,
-  pub status: i16,
-  pub responded_at: Option<chrono::DateTime<chrono::Utc>>,
-  pub created_at: chrono::DateTime<chrono::Utc>,
-  pub updated_at: chrono::DateTime<chrono::Utc>,
+#[derive(Debug, Deserialize, Validate)]
+pub struct ContactMeForm {
+    #[validate(length(min = 2, max = 100))]
+    pub name: String,
+
+    #[validate(email)]
+    pub email: String,
+
+    #[validate(length(max = 100))]
+    pub subject: Option<String>,
+
+    #[validate(length(min = 5, max = 1000))]
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct ContactMeMessage {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+    pub subject: Option<String>,
+    pub message: String,
+    pub created_at: DateTime<Utc>,
 }
