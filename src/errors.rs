@@ -9,6 +9,7 @@ use actix_web::{
 use jsonwebtoken::errors::{ErrorKind, Error as JwtError};
 use derive_more::Display;
 use serde::Serialize;
+use tracing::{info, warn, error};
 use validator::ValidationErrors;
 
 #[derive(Debug)]
@@ -46,6 +47,57 @@ impl fmt::Display for AppError {
 
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
+        match self {
+            AppError::ValidationError(errors) => {
+                warn!(
+                    error_type = "ValidationError",
+                    ?errors,
+                    "Validation failed"
+                );
+            },
+            AppError::NotFound(msg) => {
+                info!(
+                    error_type = "NotFound",
+                    message = %msg,
+                    "Requested resource not found"
+                );
+            }
+            AppError::Conflict(msg) => {
+                warn!(
+                    error_type = "Conflict",
+                    message = %msg,
+                    "Resource conflict occurred"
+                );
+            }
+            AppError::UnauthorizedAccess => {
+                warn!(error_type = "UnauthorizedAccess", "Unauthorized access attempt");
+            }
+            AppError::ForbiddenAccess => {
+                warn!(error_type = "ForbiddenAccess", "Forbidden access attempt");
+            }
+            AppError::InvalidInput(msg) => {
+                warn!(
+                    error_type = "InvalidInput",
+                    message = %msg,
+                    "Invalid input provided"
+                );
+            }
+            AppError::ServiceUnavailable(msg) => {
+                error!(
+                    error_type = "ServiceUnavailable",
+                    message = %msg,
+                    "External service unavailable"
+                );
+            }
+            AppError::InternalError(msg) => {
+                error!(
+                    error_type = "InternalError",
+                    message = %msg,
+                    "Unexpected internal server error"
+                );
+            }
+        }
+
         let body = match self {
             AppError::ValidationError(errors) => {
                 serde_json::json!({

@@ -1,8 +1,9 @@
 use actix_web::{web, HttpResponse, Responder};
+use tracing::instrument;
 
 use crate::{entities::blog_post::{NewBlogPostRequest, UpdateBlogPostRequest}, errors::AppError, use_cases::extractors::AdminClaims, AppState};
 
-
+#[instrument(skip(_claims, state, data))]
 pub async fn create_blog_post(
     _claims: AdminClaims,
     state: web::Data<AppState>,

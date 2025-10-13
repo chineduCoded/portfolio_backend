@@ -1,6 +1,8 @@
 use std::env;
 
 use actix_web::{middleware::NormalizePath, web, App, HttpServer};
+use tracing_actix_web::TracingLogger;
+use tracing_subscriber::{fmt, EnvFilter};
 use portfolio_backend::{
     background_task::start_purge_task, 
     db::postgres::create_pool, 
@@ -13,7 +15,16 @@ use portfolio_backend::{
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    tracing_subscriber::fmt::init();
+    dotenv::dotenv().ok();
+    
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,actix_web=info,portfolio_backend=debug"));
+
+    fmt()
+        .with_env_filter(env_filter)
+        .with_target(false)
+        .compact()
+        .init();
 
     let config = match AppConfig::new() {
         Ok(cfg) => {
@@ -47,6 +58,7 @@ async fn main() -> std::io::Result<()> {
     let server = HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
+            .wrap(TracingLogger::default())
             .wrap(NormalizePath::trim())
             .wrap(AuthMiddleware)
             .configure(configure_routes)

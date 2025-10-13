@@ -20,6 +20,8 @@ impl FromRequest for AuthClaims {
 
 /// Extractor for admin claims, ensuring the user has admin privileges.
 /// Returns 403 if the user is not an admin.
+/// Returns 401 if the user is not authenticated.
+#[derive(Debug)]
 pub struct AdminClaims(pub Claims);
 
 impl FromRequest for AdminClaims {

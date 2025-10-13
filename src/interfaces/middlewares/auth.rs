@@ -1,5 +1,5 @@
 use actix_web::{
-    body::BoxBody,
+    body::{BoxBody, MessageBody},
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     web, Error, HttpMessage
 };
@@ -20,9 +20,10 @@ const BEARER_PREFIX: &str = "bearer ";
 
 pub struct AuthMiddleware;
 
-impl<S> Transform<S, ServiceRequest> for AuthMiddleware
+impl<S, B> Transform<S, ServiceRequest> for AuthMiddleware
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<BoxBody>, Error = Error> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    B: MessageBody + 'static, // Allow any body type
 {
     type Response = ServiceResponse<BoxBody>;
     type Error = Error;
@@ -41,9 +42,10 @@ pub struct AuthMiddlewareService<S> {
     service: Rc<S>,
 }
 
-impl<S> Service<ServiceRequest> for AuthMiddlewareService<S>
+impl<S, B> Service<ServiceRequest> for AuthMiddlewareService<S>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<BoxBody>, Error = Error> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    B: MessageBody + 'static, // Allow any body type
 {
     type Response = ServiceResponse<BoxBody>;
     type Error = Error;
@@ -61,7 +63,8 @@ where
             let method = req.method().as_str();
 
             if is_public_route(path, method) {
-                return service.call(req).await;
+                let downstream_res = service.call(req).await?;
+                return Ok(downstream_res.map_into_boxed_body());
             }
 
             let state = req.app_data::<web::Data<AppState>>()
@@ -74,20 +77,22 @@ where
                 Some(token) => token,
                 None => {
                     tracing::warn!("Missing or malformed Authorization header");
-                    return Ok(req.error_response(AuthError::MissingAuthHeader));
+                    return Ok(
+                        req.error_response(AuthError::MissingAuthHeader).map_into_boxed_body()
+                    );
                 }
             };
 
             let claims = match get_valid_claims(&req) {
                 Ok(claims) => claims,
                 Err(e) => {
-                    return Ok(req.error_response(e));
+                    return Ok(req.error_response(e).map_into_boxed_body());
                 }
             };
             
             if let Some(redis_pool) = &state.redis_pool {
                 if let Err(e) = check_token_blacklist(redis_pool, &token).await {
-                    return Ok(req.error_response(e));
+                    return Ok(req.error_response(e).map_into_boxed_body());
                 }
             }
 
@@ -102,11 +107,12 @@ where
                     claims.sub,
                     claims.admin
                 );
-                return Ok(req.error_response(error));
+                return Ok(req.error_response(error).map_into_boxed_body());
             }
 
             req.extensions_mut().insert(claims);
-            service.call(req).await
+            let downstream_res = service.call(req).await?;
+            Ok(downstream_res.map_into_boxed_body())
         })
     }
 }
