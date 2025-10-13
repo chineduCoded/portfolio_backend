@@ -18,6 +18,7 @@ pub async fn create_blog_post(
     Ok(HttpResponse::Created().json(response))
 }
 
+#[instrument(skip(state, query))]
 pub async fn get_all_blog_posts(
     state: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -37,6 +38,7 @@ pub async fn get_all_blog_posts(
     Ok(HttpResponse::Ok().json(posts))
 }
 
+#[instrument(skip(state, query))]
 pub async fn get_recent_blog_posts(
     state: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -54,6 +56,7 @@ pub async fn get_recent_blog_posts(
     Ok(HttpResponse::Ok().json(posts))
 }
 
+#[instrument(skip(post_id, state))]
 pub async fn get_blog_post_by_id(
     post_id: web::Path<String>,
     state: web::Data<AppState>,
@@ -64,7 +67,7 @@ pub async fn get_blog_post_by_id(
     Ok(HttpResponse::Ok().json(post))
 }
 
-
+#[instrument(skip(_claims, post_id, state, data))]
 pub async fn update_blog_post(
     _claims: AdminClaims,
     post_id: web::Path<String>,
@@ -76,6 +79,7 @@ pub async fn update_blog_post(
     Ok(HttpResponse::Ok().json(updated_post))
 }
 
+#[instrument(skip(_claims, post_id, state))]
 pub async fn publish_blog_post(
     _claims: AdminClaims,
     post_id: web::Path<String>,
@@ -86,6 +90,7 @@ pub async fn publish_blog_post(
     Ok(HttpResponse::Ok().json(published_post))
 }
 
+#[instrument(skip(_claims, post_id, state, query))]
 pub async fn delete_blog_post(
     _claims: AdminClaims,
     post_id: web::Path<String>,
@@ -100,6 +105,7 @@ pub async fn delete_blog_post(
 
 // Additional handlers for the admin interface can be added here
 // such as listing all posts including unpublished ones, etc.
+#[instrument(skip(_claims, state, query))]
 pub async fn admin_get_all_blog_posts(
     _claims: AdminClaims,
     state: web::Data<AppState>,
@@ -120,6 +126,7 @@ pub async fn admin_get_all_blog_posts(
     Ok(HttpResponse::Ok().json(posts))
 }
 
+#[instrument(skip(_claims, state, query))]
 pub async fn admin_get_recent_blog_posts(
     _claims: AdminClaims,
     state: web::Data<AppState>,

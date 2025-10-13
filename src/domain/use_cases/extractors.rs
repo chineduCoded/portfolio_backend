@@ -4,6 +4,8 @@ use crate::{entities::token::Claims, errors::AuthError};
 
 /// Extractor for authenticated claims, ensuring the user is authenticated.
 /// Returns 401 if the user is not authenticated.
+/// Usage: Add `claims: AuthClaims` as a parameter to your handler function.
+#[derive(Debug)]
 pub struct AuthClaims(pub Claims);
 
 impl FromRequest for AuthClaims {
