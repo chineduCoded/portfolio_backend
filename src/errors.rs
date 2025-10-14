@@ -51,6 +51,7 @@ impl ResponseError for AppError {
             AppError::ValidationError(errors) => {
                 warn!(
                     error_type = "ValidationError",
+                    error_count = errors.len(),
                     ?errors,
                     "Validation failed"
                 );
@@ -252,6 +253,90 @@ pub enum AuthError {
 
 impl ResponseError for AuthError {
     fn error_response(&self) -> HttpResponse {
+        match self {
+            // Client errors - expected authentication failures
+            AuthError::MissingCredentials
+            | AuthError::MissingAuthHeader
+            | AuthError::WrongCredentials => {
+                info!(
+                    error_type = "AuthError",
+                    error_kind = "ClientError",
+                    error = %self,
+                    "Authentication failed due to client error"
+                );
+            }
+            
+            // Token validation errors - client should fix
+            AuthError::InvalidToken
+            | AuthError::TokenExpired
+            | AuthError::RevokedToken
+            | AuthError::TokenRevoked
+            | AuthError::InvalidTokenType => {
+                warn!(
+                    error_type = "AuthError", 
+                    error_kind = "InvalidToken",
+                    error = %self,
+                    "Token validation failed"
+                );
+            }
+            
+            // Authorization errors
+            AuthError::TokenUserMismatch
+            | AuthError::InvalidUserId
+            | AuthError::AuthenticationFailed => {
+                warn!(
+                    error_type = "AuthError",
+                    error_kind = "AuthorizationError",
+                    error = %self,
+                    "Authorization failed"
+                );
+            }
+            
+            // Forbidden with context
+            AuthError::Forbidden(msg) => {
+                warn!(
+                    error_type = "AuthError",
+                    error_kind = "Forbidden",
+                    message = %msg,
+                    "Forbidden access attempt"
+                );
+            }
+            
+            // Infrastructure/configuration issues
+            AuthError::RedisNotConfigured
+            | AuthError::MissingJwtService
+            | AuthError::MissingAppState => {
+                error!(
+                    error_type = "AuthError",
+                    error_kind = "ConfigurationError",
+                    error = %self,
+                    "Authentication service misconfigured"
+                );
+            }
+            
+            // External service failures
+            AuthError::RedisOperation(err)
+            | AuthError::RedisConnection(err) => {
+                error!(
+                    error_type = "AuthError",
+                    error_kind = "ServiceError",
+                    underlying_error = %err,
+                    "Authentication service unavailable"
+                );
+            }
+            
+            // Internal processing errors
+            AuthError::TokenCreation
+            | AuthError::PasswordError(_) => {
+                error!(
+                    error_type = "AuthError",
+                    error_kind = "InternalError",
+                    error = %self,
+                    "Internal authentication processing error"
+                );
+            }
+        }
+        
         let msg = self.to_string();
         HttpResponse::build(self.status_code())
             .json(serde_json::json!({ "error": msg }))

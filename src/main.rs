@@ -2,7 +2,7 @@ use std::env;
 
 use actix_web::{middleware::NormalizePath, web, App, HttpServer};
 use tracing_actix_web::TracingLogger;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, EnvFilter, prelude::*};
 use portfolio_backend::{
     background_task::start_purge_task, 
     db::postgres::create_pool, 
@@ -20,11 +20,18 @@ async fn main() -> std::io::Result<()> {
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info,actix_web=info,portfolio_backend=debug"));
 
-    fmt()
-        .with_env_filter(env_filter)
-        .with_target(false)
-        .compact()
-        .init();
+    if std::env::var("RUST_LOG_JSON").is_ok() {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt::layer().json().flatten_event(true))
+            .init();
+    } else {
+        fmt()
+            .with_env_filter(env_filter)
+            .with_target(false)
+            .compact()
+            .init();
+    }
 
     let config = match AppConfig::new() {
         Ok(cfg) => {

@@ -2,3 +2,4 @@ pub mod auth;
 pub mod extractors;
 pub mod about;
 pub mod blog;
+pub mod contact;

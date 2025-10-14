@@ -85,7 +85,7 @@ impl AboutRepository for SqlxAboutMeRepo {
         .map_err(AppError::from)?;
 
         let about_me = about_me
-            .ok_or_else(|| AppError::NotFound("Record not found".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("About me not found".to_string()))?;
         
         Ok(about_me.into())
     }
@@ -151,7 +151,7 @@ impl AboutRepository for SqlxAboutMeRepo {
         .await
         .map(|result| {
             if result.rows_affected() == 0 {
-                Err(AppError::NotFound("Record not found".into()))
+                Err(AppError::NotFound("About me not found".into()))
             } else {
                 Ok(())
             }
@@ -167,7 +167,7 @@ impl AboutRepository for SqlxAboutMeRepo {
         .await
         .map(|result| {
             if result.rows_affected() == 0 {
-                Err(AppError::NotFound("AboutMe record".into()))
+                Err(AppError::NotFound("About me not found".into()))
             } else {
                 Ok(())
             }
