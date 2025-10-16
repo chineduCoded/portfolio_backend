@@ -23,18 +23,18 @@ pub use infrastructure::{auth, db, utils};
 use auth::jwt::JwtService;
 use use_cases::auth::AuthHandler;
 
-use crate::{domain::use_cases::{about::AboutHandler, blog::BlogPostHandler}, errors::AuthError, interfaces::repositories::sqlx_repo::{SqlxAboutMeRepo, SqlxBlogPostRepo, SqlxUserRepo}, shared_repos::SharedRepositories};
-
-#[async_trait]
-pub trait RedisService {
-    async fn revoke_token(&self, prefix: &str, token: &str, ttl: usize) -> Result<(), AuthError>;
-    async fn is_token_revoked(&self, prefix: &str, token: &str) -> Result<bool, AuthError>;
-}
+use crate::{
+    domain::use_cases::{about::AboutHandler, blog::BlogPostHandler, contact::ContactMeHandler}, 
+    errors::AuthError, 
+    interfaces::repositories::sqlx_repo::{SqlxAboutMeRepo, SqlxBlogPostRepo, SqlxContactMeRepo, SqlxUserRepo}, 
+    shared_repos::SharedRepositories
+};
 
 pub struct AppState {
     pub auth_handler: AppAuthHandler,
     pub about_handler: AboutHandler<SqlxAboutMeRepo>,
     pub blog_handler: BlogPostHandler<SqlxBlogPostRepo>,
+    pub contact_handler: ContactMeHandler<SqlxContactMeRepo>,
     pub redis_pool: Option<RedisPool>,
 }
 
@@ -51,6 +51,7 @@ impl AppState {
         let auth_handler = AuthHandler::new(shared_repos.user_repo, jwt_service);
         let about_handler = AboutHandler::new(shared_repos.about_repo);
         let blog_handler = BlogPostHandler::new(shared_repos.blog_post_repo);
+        let contact_handler = ContactMeHandler::new(shared_repos.contact_repo);
         
         let redis_pool = config.redis_url.as_ref().and_then(|url| {
             let cfg = deadpool_redis::Config::from_url(url);
@@ -65,6 +66,7 @@ impl AppState {
             auth_handler,
             about_handler,
             blog_handler,
+            contact_handler,
             redis_pool 
         }
     }
@@ -84,6 +86,50 @@ impl AppState {
         }
     }
 
+    /// Automatically increments a Redis counter with TTL
+    pub async fn redis_incr_with_ttl(
+        &self,
+        key: &str,
+        ttl_secs: usize,
+    ) -> Result<u32, AuthError> {
+        self.with_redis(|mut conn| async move {
+            let current = self.incr_with_ttl(&mut conn, key, ttl_secs)
+                .await
+                .map_err(|e| AuthError::RedisOperation(e.to_string()))?;
+            Ok(current)
+        })
+        .await
+    }
+
+    /// Atomically increments a counter and sets TTL if it's the first increment.
+    /// Returns the current counter value after increment.
+    pub async fn incr_with_ttl<C>(
+        &self,
+        conn: &mut C,
+        key: &str,
+        ttl_secs: usize,
+    ) -> redis::RedisResult<u32>
+    where
+        C: AsyncCommands + Send,
+    {
+        let script = r#"
+            local current = redis.call("INCR", KEYS[1])
+            if current == 1 then
+                redis.call("EXPIRE", KEYS[1], ARGV[1])
+            end
+            return current
+        "#;
+
+        let cur: i64 = redis::Script::new(script)
+            .key(key)
+            .arg(ttl_secs)
+            .invoke_async(conn)
+            .await?;
+
+        Ok(cur as u32)
+    }
+
+
     pub async fn check_redis_health(&self) -> &'static str {
         if let Some(pool) = &self.redis_pool {
             match pool.get().await {
@@ -100,6 +146,12 @@ impl AppState {
             "Not configured".into()
         }
     }
+}
+
+#[async_trait]
+pub trait RedisService {
+    async fn revoke_token(&self, prefix: &str, token: &str, ttl: usize) -> Result<(), AuthError>;
+    async fn is_token_revoked(&self, prefix: &str, token: &str) -> Result<bool, AuthError>;
 }
 
 #[async_trait]
