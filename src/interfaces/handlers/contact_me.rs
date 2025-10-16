@@ -24,5 +24,8 @@ pub async fn create_contact_me(
         })));
     }
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "ok" })))
+    let response = state.contact_handler
+        .create_contact_message(form.into_inner()).await?;
+
+    Ok(HttpResponse::Created().json(response))
 }

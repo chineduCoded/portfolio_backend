@@ -18,7 +18,7 @@ pub mod shared_repos;
 
 pub use domain::{entities, use_cases};
 pub use interfaces::{handlers, repositories, middlewares, routes};
-pub use infrastructure::{auth, db, utils};
+pub use infrastructure::{auth, db, utils, limiter};
 
 use auth::jwt::JwtService;
 use use_cases::auth::AuthHandler;
